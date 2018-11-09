@@ -3,20 +3,30 @@ import urllib3
 import HTMLParser
 import sys
 import re
+from threading import Thread
+
+
+def threaded_downloader(url, filename):
+    print "Downloading", filename
+    r = urllib3.PoolManager().request('GET', url)
+    f = open(filename, 'wb')
+    f.write(r.data)
+    f.close()
 
 
 class ImageHTMLParser(HTMLParser.HTMLParser):
     filename = None
+    threads = []
+    def get_threads(self):
+        return self.threads
     def set_filename(self, name):
         self.filename = "img_archive_"+name+".jpg"
     def handle_starttag(self, tag, attrs):
         if tag == "a":
             url = attrs[0][1]
-            r = urllib3.PoolManager().request('GET', url)
-            print url, r.status, self.filename
-            f = open(self.filename, 'wb')
-            f.write(r.data)
-            f.close()
+            t = Thread(target = threaded_downloader, args = (url, self.filename ))
+            t.start()
+            self.threads.append(t)
 
 
 class UrlHTMLParser(HTMLParser.HTMLParser):
@@ -32,6 +42,9 @@ class UrlHTMLParser(HTMLParser.HTMLParser):
 
 
 def main():
+    
+    threads = []
+     
     img_parser = ImageHTMLParser()
     url_parser = UrlHTMLParser()
     
@@ -41,7 +54,6 @@ def main():
     
     while not stop:
         stop = True
-        print url_parser.get_next()
         r = urllib3.PoolManager().request('GET', url_parser.get_next())
         splitting = re.split('[_/?.]', url_parser.get_next())
         img_parser.set_filename(splitting[13] + "_" + splitting[14] + "_" + splitting[15])
@@ -52,6 +64,9 @@ def main():
             if "successivo" in line:
                 stop = False
                 url_parser.feed(line)
+                
+    for t in img_parser.get_threads():
+        t.join()
 
 if __name__ == "__main__":
     main()
