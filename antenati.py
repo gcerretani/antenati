@@ -20,11 +20,11 @@ class ImageHTMLParser(HTMLParser.HTMLParser):
     def get_threads(self):
         return self.threads
     def set_filename(self, name):
-        self.filename = "img_archive_"+name+".jpg"
+        self.filename = "img_archive_" + name + ".jpg"
     def handle_starttag(self, tag, attrs):
         if tag == "a":
             url = attrs[0][1]
-            t = Thread(target = threaded_downloader, args = (url, self.filename ))
+            t = Thread(target = threaded_downloader, args = (url, self.filename))
             t.start()
             self.threads.append(t)
 
