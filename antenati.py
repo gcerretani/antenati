@@ -2,6 +2,7 @@
 import urllib3
 import HTMLParser
 import sys
+import os
 import re
 from threading import Thread
 
@@ -49,7 +50,10 @@ def main():
     url_parser = UrlHTMLParser()
     
     url_parser.set_next(sys.argv[1])
-    
+    splitting = re.split('[_/?.]', url_parser.get_next())
+    os.mkdir(splitting[13])
+    os.chdir(splitting[13])
+
     stop = False
     
     while not stop:
