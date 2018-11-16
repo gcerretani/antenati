@@ -9,6 +9,7 @@ Just run the script putting as first argument the first page of a collection you
 
     ./antenati.py <link to the first page>
 
+The files are put to a new folder named with the gallery ID (the number after the year in the URL) of the downloaded archive.
 
 ### Example:
 In the website, navigate to the archive you want to download. For example, for the people born in Montalcino in 1832, you should find the page:
