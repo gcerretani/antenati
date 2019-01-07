@@ -7,7 +7,7 @@ Since the website tends to be pretty slow in the evening, we present a script to
 ## Usage 
 Just run the script putting as first argument the first page of a collection you want to download:
 
-    ./antenati.py <link to the first page>
+    ./antenati.py <URL of the first page>
 
 The files are put to a new folder named with the gallery ID (the number after the year in the URL) of the downloaded archive.
 
