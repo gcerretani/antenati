@@ -16,6 +16,6 @@ In the website, navigate to the archive you want to download. For example, for t
 
 [http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione/Montalcino+provincia+di+Siena/Nati/1832/179/](http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione/Montalcino+provincia+di+Siena/Nati/1832/179/)
 
-The, copy the link to the first page, and call the script with that link as argument:
+Then, copy the link to the first page, and call the script with that link as argument:
 
     ./antenati.py http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione/Montalcino+provincia+di+Siena/Nati/1832/179/005178080_00303.jpg.html
