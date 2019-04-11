@@ -49,8 +49,18 @@ def main():
     
     url_parser.set_next(sys.argv[1])
     splitting = re.split('[_/?.]', url_parser.get_next())
-    os.mkdir(splitting[13])
-    os.chdir(splitting[13])
+    
+    str_comune = splitting[10].replace('+', '_')
+    str_type = splitting[11]
+    str_year = splitting[12]
+    foldername = '_'.join([str_comune, str_type, str_year])
+    
+    if os.path.exists(foldername):
+        print("Directory " + foldername + " already exists. Please remove it.")
+        return
+    
+    os.mkdir(foldername)
+    os.chdir(foldername)
 
     stop = False
     
