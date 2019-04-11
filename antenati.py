@@ -51,8 +51,8 @@ def main():
     splitting = re.split('[_/?.]', url_parser.get_next())
     
     str_comune = splitting[10].replace('+', '_')
-    str_type = splitting[11]
-    str_year = splitting[12]
+    str_type = splitting[11].replace('+', '_')
+    str_year = splitting[12].replace('+', '_')
     foldername = '_'.join([str_comune, str_type, str_year])
     
     if os.path.exists(foldername):
