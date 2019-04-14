@@ -9,7 +9,7 @@ Just run the script putting as first argument the first page of a collection you
 
     ./antenati.py <URL of the first page>
 
-The files are put to a new folder named as *COMUNE_TYPE_YEAR* of the downloaded archive. If the folder already exists no operation is done.
+The files are put to a new folder named as *COMUNE_TYPE_YEAR* of the downloaded archive.
 
 ### Example:
 In the website, navigate to the archive you want to download. For example, for the people born in Montalcino in 1832, you should find the page:
