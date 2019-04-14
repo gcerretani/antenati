@@ -5,50 +5,66 @@ import sys
 import os
 import re
 import click
-from threading import Thread
+import threading
 
 
-def threadedDownloader(url, filename):
-    print 'Downloading', filename
-    r = urllib3.PoolManager().request('GET', url)
-    f = open(filename, 'wb')
-    f.write(r.data)
-    f.close()
+class Downloader(threading.Thread):
+    def __init__ (self, pool, url, filename):
+        threading.Thread.__init__(self, target = self.run)
+        self.pool = pool
+        self.url = url
+        self.filename = filename
+        self.start()
+    def run(self):
+        print('Downloading ' + self.filename)
+        r = self.pool.request_encode_url('GET', self.url)
+        f = open(self.filename, 'wb')
+        f.write(r.data)
+        f.close()
+        print('Done ' + self.filename)
 
 
 class ImageHTMLParser(HTMLParser.HTMLParser):
-    filename = None
-    threads = []
+    def __init__(self, pool):
+        HTMLParser.HTMLParser.__init__(self)
+        self.pool = pool
+        self.filename = None
+        self.threads = []
     def get_threads(self):
         return self.threads
     def set_filename(self, name):
         self.filename = 'img_archive_' + name + '.jpg'
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
-            url = attrs[0][1]
-            t = Thread(target = threadedDownloader, args = (url, self.filename))
-            t.start()
+            attr_dict = dict(attrs)
+            url = attr_dict['href']
+            t = Downloader(self.pool, url, self.filename)
             self.threads.append(t)
 
 
 class UrlHTMLParser(HTMLParser.HTMLParser):
-    next = ''
-    def set_next(self, name):
-        self.next = name
+    def __init__(self):
+        HTMLParser.HTMLParser.__init__(self)
+        self.next = None
+    def set_next(self, next):
+        self.next = next
     def get_next(self):
         return self.next
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
-            if attrs[1][1] == 'next':
-                self.set_next('http://dl.antenati.san.beniculturali.it' + attrs[0][1])
+            attr_dict = dict(attrs)
+            if attr_dict['class'] == 'next':
+                url = attr_dict['href']
+                self.next = url
 
 
 def main():
-        
-    img_parser = ImageHTMLParser()
+    connection_pool = urllib3.HTTPConnectionPool('dl.antenati.san.beniculturali.it', maxsize = 10)
+    img_parser = ImageHTMLParser(connection_pool)
     url_parser = UrlHTMLParser()
     
     url_parser.set_next(sys.argv[1])
+    
     splitting = re.split('[_/?.]', url_parser.get_next())
     
     html_element = splitting.index('html')
@@ -68,11 +84,12 @@ def main():
     
     while not stop:
         stop = True
-        r = urllib3.PoolManager().request('GET', url_parser.get_next())
+        r = connection_pool.request_encode_url('GET', url_parser.get_next())
         splitting = re.split('[_/?.]', url_parser.get_next())
         html_element = splitting.index('html')
         file_name_elements = splitting[html_element - 3 : html_element - 1]
-        img_parser.set_filename('_'.join(file_name_elements))
+        local_filename = '_'.join(file_name_elements)
+        img_parser.set_filename(local_filename)
     
         for line in r.data.split('\n'):
             if 'zoomAntenati1' in line:
