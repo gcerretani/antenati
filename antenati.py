@@ -1,6 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""
+antenati.py: a tool to download data from the Portale Antenati
+"""
+
+__author__      = "Giovanni Cerretani"
+__copyright__   = "Copyright (c) 2018, MIT License"
+
 import urllib3
-import HTMLParser
+import html.parser
 import sys
 import os
 import re
@@ -16,17 +23,17 @@ class Downloader(threading.Thread):
         self.filename = filename
         self.start()
     def run(self):
-        print('Downloading ' + self.filename)
+        print('Downloading ', self.filename)
         r = self.pool.request_encode_url('GET', self.url)
         f = open(self.filename, 'wb')
         f.write(r.data)
         f.close()
-        print('Done ' + self.filename)
+        print('Done ', self.filename)
 
 
-class ImageHTMLParser(HTMLParser.HTMLParser):
+class ImageHTMLParser(html.parser.HTMLParser):
     def __init__(self, pool):
-        HTMLParser.HTMLParser.__init__(self)
+        html.parser.HTMLParser.__init__(self)
         self.pool = pool
         self.filename = None
         self.threads = []
@@ -42,9 +49,9 @@ class ImageHTMLParser(HTMLParser.HTMLParser):
             self.threads.append(t)
 
 
-class UrlHTMLParser(HTMLParser.HTMLParser):
+class UrlHTMLParser(html.parser.HTMLParser):
     def __init__(self):
-        HTMLParser.HTMLParser.__init__(self)
+        html.parser.HTMLParser.__init__(self)
         self.next = None
     def set_next(self, next):
         self.next = next
@@ -84,14 +91,14 @@ def main():
     
     while not stop:
         stop = True
-        r = connection_pool.request_encode_url('GET', url_parser.get_next())
+        r = connection_pool.request('GET', url_parser.get_next())
         splitting = re.split('[_/?.]', url_parser.get_next())
         html_element = splitting.index('html')
         file_name_elements = splitting[html_element - 3 : html_element - 1]
         local_filename = '_'.join(file_name_elements)
         img_parser.set_filename(local_filename)
     
-        for line in r.data.split('\n'):
+        for line in r.data.decode('utf-8').split('\n'):
             if 'zoomAntenati1' in line:
                 img_parser.feed(line)
             if 'successivo' in line:
