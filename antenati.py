@@ -17,7 +17,7 @@ import threading
 
 class Downloader(threading.Thread):
     def __init__ (self, pool, url, filename):
-        threading.Thread.__init__(self, target = self.run)
+        super().__init__(target = self.run)
         self.pool = pool
         self.url = url
         self.filename = filename
@@ -33,7 +33,7 @@ class Downloader(threading.Thread):
 
 class ImageHTMLParser(html.parser.HTMLParser):
     def __init__(self, pool):
-        html.parser.HTMLParser.__init__(self)
+        super().__init__()
         self.pool = pool
         self.filename = None
         self.threads = []
@@ -51,7 +51,7 @@ class ImageHTMLParser(html.parser.HTMLParser):
 
 class UrlHTMLParser(html.parser.HTMLParser):
     def __init__(self):
-        html.parser.HTMLParser.__init__(self)
+        super().__init__()
         self.next = None
     def set_next(self, next):
         self.next = next
