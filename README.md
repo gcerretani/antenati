@@ -14,7 +14,7 @@ The files are put to a new folder named as *COMUNE_TYPE_YEAR* of the downloaded 
 ### Example:
 In the website, navigate to the archive you want to download. For example, for the people born in Montalcino in 1832, you should find the page:
 
-[http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione+1816-1860/Montalcino+provincia+di+Siena/Nati/1832/179/](http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione/Montalcino+provincia+di+Siena/Nati/1832/179/)
+[http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione+1816-1860/Montalcino+provincia+di+Siena/Nati/1832/179/](http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione+1816-1860/Montalcino+provincia+di+Siena/Nati/1832/179/)
 
 Then, copy the link to the first page, and call the script with that link as argument:
 
