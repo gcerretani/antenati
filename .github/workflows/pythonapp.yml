@@ -6,10 +6,6 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        gallery: [http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione+1816-1860/Montalcino+provincia+di+Siena/Nati/1832/179/005178080_00303.jpg.html]
 
     steps:
     - uses: actions/checkout@v1
@@ -23,4 +19,4 @@ jobs:
         pip install -r requirements.txt
     - name: Download test
       run: |
-        python antenati.py ${{ matrix.gallery }}
+        python antenati.py http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione+1816-1860/Montalcino+provincia+di+Siena/Nati/1832/179/005178080_00303.jpg.html
