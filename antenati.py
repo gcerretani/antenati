@@ -18,51 +18,50 @@ import threading
 class Downloader(threading.Thread):
     def __init__ (self, pool, url, filename):
         super().__init__(target = self.run)
-        self.pool = pool
-        self.url = url
-        self.filename = filename
+        self._pool = pool
+        self._url = url
+        self._filename = filename
         self.start()
     def run(self):
-        print('Downloading ', self.filename)
-        r = self.pool.request_encode_url('GET', self.url)
-        f = open(self.filename, 'wb')
-        f.write(r.data)
-        f.close()
-        print('Done ', self.filename)
+        print('Downloading ', self._filename)
+        r = self._pool.request_encode_url('GET', self._url)
+        with open(self._filename, 'wb') as f:
+            f.write(r.data)
+        print('Done ', self._filename)
 
 
 class ImageHTMLParser(html.parser.HTMLParser):
     def __init__(self, pool):
         super().__init__()
-        self.pool = pool
-        self.filename = None
-        self.threads = []
+        self._pool = pool
+        self._filename = None
+        self._threads = []
     def get_threads(self):
-        return self.threads
+        return self._threads
     def set_filename(self, name):
-        self.filename = 'img_archive_' + name + '.jpg'
+        self._filename = 'img_archive_' + name + '.jpg'
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
             attr_dict = dict(attrs)
             url = attr_dict['href']
-            t = Downloader(self.pool, url, self.filename)
-            self.threads.append(t)
+            t = Downloader(self._pool, url, self._filename)
+            self._threads.append(t)
 
 
 class UrlHTMLParser(html.parser.HTMLParser):
     def __init__(self):
         super().__init__()
-        self.next = None
+        self._next = None
     def set_next(self, next):
-        self.next = next
+        self._next = next
     def get_next(self):
-        return self.next
+        return self._next
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
             attr_dict = dict(attrs)
             if attr_dict['class'] == 'next':
                 url = attr_dict['href']
-                self.next = url
+                self._next = url
 
 
 def main():
