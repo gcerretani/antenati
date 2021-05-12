@@ -1,2 +1,2 @@
 Click==7.0
-urllib3==1.25.6
+urllib3==1.25.8
