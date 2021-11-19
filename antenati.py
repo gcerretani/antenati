@@ -4,10 +4,9 @@ antenati.py: a tool to download data from the Portale Antenati
 """
 
 __author__      = "Giovanni Cerretani"
-__copyright__   = "Copyright (c) 2018, MIT License"
+__copyright__   = "Copyright (c) 2021, MIT License"
 
 import urllib3
-import html.parser
 import json
 import sys
 import os
@@ -31,13 +30,14 @@ class Downloader(threading.Thread):
         print('Done ', self._filename)
 
 
-class ImageHTMLParser():
-    def __init__(self, pool):
+class ImageGetter():
+    def __init__(self):
         super().__init__()
-        self._pool = pool
+        self._pool = urllib3.HTTPSConnectionPool('iiif-antenati.san.beniculturali.it', maxsize = 10)
         self._threads = []
-    def get_threads(self):
-        return self._threads
+    def wait(self):
+        for t in self._threads:
+            t.join()
     def get_file(self, url, name):
             filename = 'img_archive_' + name + '.jpg'
             t = Downloader(self._pool, url, filename)
@@ -45,9 +45,6 @@ class ImageHTMLParser():
 
 
 def main():
-
-    connection_pool = urllib3.HTTPSConnectionPool('iiif-antenati.san.beniculturali.it', maxsize = 10)
-    img_parser = ImageHTMLParser(connection_pool)
     
     pool_manager = urllib3.PoolManager()
     r = pool_manager.request('GET', sys.argv[1])
@@ -56,7 +53,6 @@ def main():
 
     for line in r.data.decode('utf-8').split('\n'):
         if 'manifestId' in line:
-            print(line)
             splitting = re.split('[\']', line)
             manifest = splitting[1]
 
@@ -78,14 +74,17 @@ def main():
         os.mkdir(foldername)
         
     os.chdir(foldername)
+    
+    img_getter = ImageGetter()
 
     for img_desc in manifest_json['sequences'][0]['canvases']:
         url = img_desc['images'][0]['resource']['@id']
         name = slugify.slugify(img_desc['label'])
-        img_parser.get_file(url, name)
+        img_getter.get_file(url, name)
     
-    for t in img_parser.get_threads():
-        t.join()
+    img_getter.wait()
+    
+    print('Done')
 
 if __name__ == '__main__':
     main()
