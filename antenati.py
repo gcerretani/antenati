@@ -59,15 +59,18 @@ def main():
     if not manifest_url:
         print('No manifest found')
         return
-
     http_reply = pool_manager.request('GET', manifest_url)
     manifest = json.loads(http_reply.data.decode('utf-8'))
 
     # Get folder name from metadata
     archive_label = manifest['label']
-    archive_content_type = manifest['metadata'][1]['value']
+    archive_content_type = 'unknown'
+    for metadata in manifest['metadata']:
+        if metadata['label'] == 'Tipologia':
+            archive_content_type = metadata['value']
     foldername = slugify.slugify(f'{archive_label}-{archive_content_type}')
 
+    # Check if folder already exists and chdir to it
     if os.path.exists(foldername):
         click.echo(f'Directory {foldername} already exists.')
         if not click.confirm('Do you want to proceed?'):
@@ -75,19 +78,17 @@ def main():
             return
     else:
         os.mkdir(foldername)
-
     os.chdir(foldername)
 
     # Download images
     img_getter = ImageGetter()
-
     for img_desc in manifest['sequences'][0]['canvases']:
         url = img_desc['images'][0]['resource']['@id']
         name = slugify.slugify(img_desc['label'])
         img_getter.get_file_on_thread(url, name)
-
     img_getter.wait()
 
+    # Done
     print('Done')
 
 if __name__ == '__main__':
