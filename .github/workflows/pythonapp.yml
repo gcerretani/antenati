@@ -19,4 +19,4 @@ jobs:
         pip install -r requirements.txt
     - name: Download test
       run: |
-        python antenati.py http://dl.antenati.san.beniculturali.it/v/Archivio+di+Stato+di+Firenze/Stato+civile+della+restaurazione+1816-1860/Montalcino+provincia+di+Siena/Nati/1832/179/005178080_00303.jpg.html
+        python antenati.py https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549
