@@ -64,12 +64,14 @@ def main():
     manifest = json.loads(http_reply.data.decode('utf-8'))
 
     # Get folder name from metadata
-    foldername = slugify.slugify('{}-{}'.format(manifest['label'], manifest['metadata'][1]['value']))
+    archive_label = manifest['label']
+    archive_content_type = manifest['metadata'][1]['value']
+    foldername = slugify.slugify(f'{archive_label}-{archive_content_type}')
 
     if os.path.exists(foldername):
-        click.echo('Directory {} already exists.'.format(foldername)
+        click.echo(f'Directory {foldername} already exists.')
         if not click.confirm('Do you want to proceed?'):
-            print('Exiting')
+            print('Aborting')
             return
     else:
         os.mkdir(foldername)
