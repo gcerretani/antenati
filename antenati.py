@@ -34,7 +34,8 @@ class Downloader(threading.Thread):
 class ImageGetter():
     def __init__(self):
         super().__init__()
-        self._pool = urllib3.HTTPSConnectionPool('iiif-antenati.san.beniculturali.it', maxsize = 10, block = True)
+        host = 'iiif-antenati.san.beniculturali.it'
+        self._pool = urllib3.HTTPSConnectionPool(host, maxsize = 10, block = True)
         self._threads = []
     def wait(self):
         for thrd in self._threads:
@@ -66,7 +67,8 @@ def main():
     foldername = slugify.slugify('{}-{}'.format(manifest['label'], manifest['metadata'][1]['value']))
 
     if os.path.exists(foldername):
-        if not click.confirm('Directory {} already exists. Do you want to proceed?'.format(foldername)):
+        click.echo('Directory {} already exists.'.format(foldername)
+        if not click.confirm('Do you want to proceed?'):
             print('Exiting')
             return
     else:
