@@ -6,14 +6,15 @@ antenati.py: a tool to download data from the Portale Antenati
 __author__      = "Giovanni Cerretani"
 __copyright__   = "Copyright (c) 2021, MIT License"
 
-import urllib3
 import json
 import sys
 import os
 import re
-import click
 import threading
+import urllib3
+import click
 import slugify
+
 
 class Downloader(threading.Thread):
     def __init__ (self, pool, url, filename):
@@ -24,66 +25,65 @@ class Downloader(threading.Thread):
         self.start()
     def run(self):
         print('Downloading ', self._filename)
-        r = self._pool.request_encode_url('GET', self._url)
-        with open(self._filename, 'wb') as f:
-            f.write(r.data)
+        http_reply = self._pool.request_encode_url('GET', self._url)
+        with open(self._filename, 'wb') as img_file:
+            img_file.write(http_reply.data)
         print('Done ', self._filename)
 
 
 class ImageGetter():
     def __init__(self):
         super().__init__()
-        self._pool = urllib3.HTTPSConnectionPool('iiif-antenati.san.beniculturali.it', maxsize = 10)
+        self._pool = urllib3.HTTPSConnectionPool('iiif-antenati.san.beniculturali.it', maxsize = 10, block = True)
         self._threads = []
     def wait(self):
-        for t in self._threads:
-            t.join()
-    def get_file(self, url, name):
-            filename = 'img_archive_' + name + '.jpg'
-            t = Downloader(self._pool, url, filename)
-            self._threads.append(t)
+        for thrd in self._threads:
+            thrd.join()
+    def get_file_on_thread(self, url, name):
+        filename = 'img_archive_' + name + '.jpg'
+        thrd = Downloader(self._pool, url, filename)
+        self._threads.append(thrd)
 
 
 def main():
-    
     pool_manager = urllib3.PoolManager()
-    r = pool_manager.request('GET', sys.argv[1])
+    http_reply = pool_manager.request('GET', sys.argv[1])
 
-    manifest = None
-
-    for line in r.data.decode('utf-8').split('\n'):
+    # Get Mirador manifest from HTTP
+    manifest_url = None
+    for line in http_reply.data.decode('utf-8').split('\n'):
         if 'manifestId' in line:
-            splitting = re.split('[\']', line)
-            manifest = splitting[1]
-
-    if not manifest:
+            url_pattern = re.search(r"'([A-Za-z0-9.:/-]*)'", line)
+            manifest_url = url_pattern.group(1)
+    if not manifest_url:
         print('No manifest found')
         return
 
-    r = pool_manager.request('GET', manifest)
+    http_reply = pool_manager.request('GET', manifest_url)
+    manifest = json.loads(http_reply.data.decode('utf-8'))
 
-    manifest_json = json.loads(r.data.decode('utf-8'))
+    # Get folder name from metadata
+    foldername = slugify.slugify('{}-{}'.format(manifest['label'], manifest['metadata'][1]['value']))
 
-    foldername = slugify.slugify(manifest_json['label'] + '-' + manifest_json['metadata'][1]['value'])
-    
     if os.path.exists(foldername):
-        if not click.confirm('Directory ' + foldername + ' already exists. Do you want to copy images to this directory?'):
+        if not click.confirm('Directory {} already exists. Do you want to proceed?'.format(foldername)):
             print('Exiting')
             return
     else:
         os.mkdir(foldername)
-        
+
     os.chdir(foldername)
-    
+
+    # Download images
     img_getter = ImageGetter()
 
-    for img_desc in manifest_json['sequences'][0]['canvases']:
+    for img_desc in manifest['sequences'][0]['canvases']:
         url = img_desc['images'][0]['resource']['@id']
         name = slugify.slugify(img_desc['label'])
-        img_getter.get_file(url, name)
-    
+        img_getter.get_file_on_thread(url, name)
+
     img_getter.wait()
-    
+
     print('Done')
 
 if __name__ == '__main__':
