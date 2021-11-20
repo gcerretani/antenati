@@ -20,8 +20,10 @@ import slugify
 import humanize
 
 def get_mirador_manifest(url):
-    pool_manager = urllib3.PoolManager(cert_reqs='CERT_REQUIRED',
-                                       ca_certs=certifi.where())
+    pool_manager = urllib3.PoolManager(
+                       cert_reqs='CERT_REQUIRED',
+                       ca_certs=certifi.where()
+    )
     http_reply = pool_manager.request('GET', url)
     manifest_url = None
     for line in http_reply.data.decode('utf-8').split('\n'):
@@ -73,11 +75,13 @@ def run(img, pool):
 def get_images(manifest, n_workers, n_connections):
     total_size = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
-        pool_http = urllib3.HTTPSConnectionPool('iiif-antenati.san.beniculturali.it',
-                                                maxsize=n_connections,
-                                                block=True,
-                                                cert_reqs='CERT_REQUIRED',
-                                                ca_certs=certifi.where())
+        pool_http = urllib3.HTTPSConnectionPool(
+                        host='iiif-antenati.san.beniculturali.it',
+                        maxsize=n_connections,
+                        block=True,
+                        cert_reqs='CERT_REQUIRED',
+                        ca_certs=certifi.where()
+        )
         canvases = manifest['sequences'][0]['canvases']
         img_list = [ get_img_data(i) for i in canvases ]
         future_img = { executor.submit(run, i, pool_http): i for i in img_list }
