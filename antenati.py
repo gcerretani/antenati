@@ -13,13 +13,17 @@ import json
 import os
 import re
 import concurrent.futures
+import certifi
 import urllib3
 import click
 import slugify
 import humanize
 
 def get_mirador_manifest(url):
-    pool_manager = urllib3.PoolManager()
+    pool_manager = urllib3.PoolManager(
+                       cert_reqs='CERT_REQUIRED',
+                       ca_certs=certifi.where()
+    )
     http_reply = pool_manager.request('GET', url)
     manifest_url = None
     for line in http_reply.data.decode('utf-8').split('\n'):
@@ -30,6 +34,14 @@ def get_mirador_manifest(url):
         raise RuntimeError(f'No Mirador manifest found at {url}')
     http_reply = pool_manager.request('GET', manifest_url)
     return json.loads(http_reply.data.decode('utf-8'))
+
+def print_mirador_manifest_info(manifest):
+    for metadata in manifest['metadata']:
+        label = metadata['label']
+        value = metadata['value']
+        print(f'{label:<25}{value}')
+    size = len(manifest['sequences'][0]['canvases'])
+    print(f'{size} images found.')
 
 def generate_foldername(manifest):
     archive_label = manifest['label']
@@ -64,8 +76,13 @@ def run(img, pool):
 def get_images(manifest, n_workers, n_connections):
     total_size = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
-        host = 'iiif-antenati.san.beniculturali.it'
-        pool_http = urllib3.HTTPSConnectionPool(host, maxsize=n_connections, block=True)
+        pool_http = urllib3.HTTPSConnectionPool(
+                        host='iiif-antenati.san.beniculturali.it',
+                        maxsize=n_connections,
+                        block=True,
+                        cert_reqs='CERT_REQUIRED',
+                        ca_certs=certifi.where()
+        )
         canvases = manifest['sequences'][0]['canvases']
         img_list = [ get_img_data(i) for i in canvases ]
         future_img = { executor.submit(run, i, pool_http): i for i in img_list }
@@ -98,6 +115,9 @@ def main():
 
     # Get Mirador manifest from HTTP
     manifest = get_mirador_manifest(args.url)
+
+    # Print manifest info
+    print_mirador_manifest_info(manifest)
 
     # Get folder name from metadata
     foldername = generate_foldername(manifest)

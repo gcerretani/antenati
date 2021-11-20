@@ -10,9 +10,11 @@ To install the dependencies, just use the classic:
 
 Then, run the script putting as first argument the first page of a collection you want to download:
 
-    ./antenati.py <URL of the album>
+    python3 antenati.py <URL of the album>
 
-The files are put to a new folder named as *ARCHIVE_PLACE_YEAR_TYPE* of the downloaded archive.
+The files are put to a new folder named as *ARCHIVE_PLACE_YEAR_TYPE* of the downloaded archive. For more options, see the help
+
+    python3 antenati.py -h
 
 ### Example:
 In the website, navigate to the archive you want to download. For example, for the people born in Viareggio in 1807 you should find the page:
@@ -21,6 +23,6 @@ In the website, navigate to the archive you want to download. For example, for t
 
 Then, copy the link to the first page, and call the script with that link as argument:
 
-    ./antenati.py https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549
+    python3 antenati.py https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549
 
 The results will be placed in a folder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati*.
