@@ -40,6 +40,7 @@ def print_mirador_manifest_info(manifest):
         label = metadata['label']
         value = metadata['value']
         print(f'{label:<25}{value}')
+    size = len(manifest['sequences'][0]['canvases'])
     print(f'{size} images found.')
 
 def generate_foldername(manifest):
