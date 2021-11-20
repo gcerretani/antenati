@@ -1,4 +1,4 @@
-Click==5.0
-urllib3==1.10
-python-slugify==1.0.2
-humanize==1.0
+Click==6.6
+urllib3==1.19.1
+python-slugify==1.2.1
+humanize==0.5.1
