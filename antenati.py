@@ -20,6 +20,7 @@ import slugify
 import humanize
 
 def get_mirador_manifest(url):
+    """Ger Mirador manifest from Portale Antenati gallery page"""
     pool_manager = urllib3.PoolManager(
                        cert_reqs='CERT_REQUIRED',
                        ca_certs=certifi.where()
@@ -36,6 +37,7 @@ def get_mirador_manifest(url):
     return json.loads(http_reply.data.decode('utf-8'))
 
 def print_mirador_manifest_info(manifest):
+    """Print Mirador gallery info"""
     for metadata in manifest['metadata']:
         label = metadata['label']
         value = metadata['value']
@@ -44,6 +46,7 @@ def print_mirador_manifest_info(manifest):
     print(f'{size} images found.')
 
 def generate_foldername(manifest):
+    """Generate foldername from info in Mirador manifest"""
     archive_label = manifest['label']
     archive_content_type = 'unknown'
     for metadata in manifest['metadata']:
@@ -52,6 +55,7 @@ def generate_foldername(manifest):
     return slugify.slugify(f'{archive_label}-{archive_content_type}')
 
 def check_folder(foldername):
+    """Check if folder already exists and chdir to it"""
     if os.path.exists(foldername):
         click.echo(f'Directory {foldername} already exists.')
         click.confirm('Do you want to proceed?', abort=True)
@@ -60,6 +64,7 @@ def check_folder(foldername):
     os.chdir(foldername)
 
 def get_img_data(img_desc):
+    """Get dictionary with image info"""
     img = {}
     label = slugify.slugify(img_desc['label'])
     img['url'] = img_desc['images'][0]['resource']['@id']
@@ -67,6 +72,7 @@ def get_img_data(img_desc):
     return img
 
 def run(img, pool):
+    """Executor to be run on a thread"""
     http_reply = pool.request_encode_url('GET', img['url'])
     with open(img['filename'], 'wb') as img_file:
         img_file.write(http_reply.data)
@@ -74,6 +80,7 @@ def run(img, pool):
     return http_reply_size
 
 def get_images(manifest, n_workers, n_connections):
+    """Main function spanning run function in a thread pool"""
     total_size = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
         pool_http = urllib3.HTTPSConnectionPool(
@@ -99,9 +106,11 @@ def get_images(manifest, n_workers, n_connections):
     return total_size
 
 def print_result(total_size):
+    """Print summary"""
     print(f'Done. Total size: {humanize.naturalsize(total_size)}')
 
 def main():
+    """Main"""
 
     # Parse arguments
     parser = argparse.ArgumentParser(
