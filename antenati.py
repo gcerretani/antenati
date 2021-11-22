@@ -105,7 +105,7 @@ def main():
 
     # Parse arguments
     parser = argparse.ArgumentParser(
-                description='a tool to download data from the Portale Antenati',
+                description=__doc__,
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
