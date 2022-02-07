@@ -48,25 +48,25 @@ def print_mirador_manifest_info(manifest):
 def get_metadata_content(manifest, label):
     return next((m['value'] for m in manifest['metadata'] if m['label'] == label), 'unknown')
 
-def generate_foldername(manifest):
-    """Generate foldername from info in Mirador manifest"""
+def generate_dirname(manifest):
+    """Generate directory name from info in Mirador manifest"""
     archive_label = manifest['label']
     archive_content_type = get_metadata_content(manifest, 'Tipologia')
     archive_url = get_metadata_content(manifest, 'Vedi il registro')
     archive_id = re.search(r'\d+', archive_url).group()
     return slugify.slugify(f'{archive_label}-{archive_content_type}-{archive_id}')
 
-def check_folder(foldername):
-    """Check if folder already exists and chdir to it"""
-    if os.path.exists(foldername):
-        click.echo(f'Directory {foldername} already exists.')
+def check_dir(dirname):
+    """Check if directory already exists and chdir to it"""
+    if os.path.exists(dirname):
+        click.echo(f'Directory {dirname} already exists.')
         click.confirm('Do you want to proceed?', abort=True)
     else:
-        os.mkdir(foldername)
-    os.chdir(foldername)
+        os.mkdir(dirname)
+    os.chdir(dirname)
 
-def print_folder(foldername):
-    print(f'Output folder: {foldername}')
+def print_dir(dirname):
+    print(f'Output directory: {dirname}')
 
 def get_img_data(img_desc):
     """Get dictionary with image info"""
@@ -133,14 +133,14 @@ def main():
     # Print manifest info
     print_mirador_manifest_info(manifest)
 
-    # Get folder name from metadata
-    foldername = generate_foldername(manifest)
+    # Get directory name from metadata
+    dirname = generate_dirname(manifest)
 
-    # Print foldername
-    print_folder(foldername)
+    # Print dirname
+    print_dir(dirname)
 
-    # Check if folder already exists and chdir to it
-    check_folder(foldername)
+    # Check if directory already exists and chdir to it
+    check_dir(dirname)
 
     # Run
     total_size = get_images(manifest, args.nthreads, args.nconn)
