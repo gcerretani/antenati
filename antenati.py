@@ -45,14 +45,16 @@ def print_mirador_manifest_info(manifest):
     size = len(manifest['sequences'][0]['canvases'])
     print(f'{size} images found.')
 
+def get_metadata_content(manifest, label):
+    return next((m['value'] for m in manifest['metadata'] if m['label'] == label), 'unknown')
+
 def generate_foldername(manifest):
     """Generate foldername from info in Mirador manifest"""
     archive_label = manifest['label']
-    archive_content_type = 'unknown'
-    for metadata in manifest['metadata']:
-        if metadata['label'] == 'Tipologia':
-            archive_content_type = metadata['value']
-    return slugify.slugify(f'{archive_label}-{archive_content_type}')
+    archive_content_type = get_metadata_content(manifest, 'Tipologia')
+    archive_url = get_metadata_content(manifest, 'Vedi il registro')
+    archive_id = re.search(r'\d+', archive_url).group()
+    return slugify.slugify(f'{archive_label}-{archive_content_type}-{archive_id}')
 
 def check_folder(foldername):
     """Check if folder already exists and chdir to it"""
@@ -62,6 +64,9 @@ def check_folder(foldername):
     else:
         os.mkdir(foldername)
     os.chdir(foldername)
+
+def print_folder(foldername):
+    print(f'Output folder: {foldername}')
 
 def get_img_data(img_desc):
     """Get dictionary with image info"""
@@ -130,6 +135,9 @@ def main():
 
     # Get folder name from metadata
     foldername = generate_foldername(manifest)
+
+    # Print foldername
+    print_folder(foldername)
 
     # Check if folder already exists and chdir to it
     check_folder(foldername)

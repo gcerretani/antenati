@@ -12,7 +12,7 @@ Then, run the script putting as first argument the first page of a collection yo
 
     python3 antenati.py <URL of the album>
 
-The files are put to a new folder named as *ARCHIVE_PLACE_YEAR_TYPE* of the downloaded archive. For more options, see the help
+The files are put to a new folder named as *ARCHIVE-PLACE-YEAR-TYPE-ID* of the downloaded archive. For more options, see the help
 
     python3 antenati.py -h
 
