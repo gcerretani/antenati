@@ -25,4 +25,4 @@ Then, copy the link to the first page, and call the script with that link as arg
 
     python3 antenati.py https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549
 
-The results will be placed in a folder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati*.
+The results will be placed in a folder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
