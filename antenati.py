@@ -26,9 +26,10 @@ class AntenatiDownloader:
 
     def __init__(self, archive_url):
         self.archive_url = archive_url
-        self.manifest = self.__get_mirador_manifest()
-        self.canvases = self.manifest['sequences'][0]['canvases']
-        self.metadata = self.manifest['metadata']
+        manifest = self.__get_mirador_manifest()
+        self.canvases = manifest['sequences'][0]['canvases']
+        self.metadata = manifest['metadata']
+        self.label = manifest['label']
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
         self.gallery_size = 0
@@ -60,13 +61,12 @@ class AntenatiDownloader:
 
     def __generate_dirname(self):
         """Generate directory name from info in Mirador manifest"""
-        archive_label = self.manifest['label']
         archive_content_type = self.__get_metadata_content('Tipologia')
         archive_id_pattern = search(r'(\d+)', self.archive_url)
         if not archive_id_pattern:
             raise RuntimeError(f'Cannot get archive ID from {self.archive_url}')
         archive_id = archive_id_pattern.group(1)
-        return slugify(f'{archive_label}-{archive_content_type}-{archive_id}')
+        return slugify(f'{self.label}-{archive_content_type}-{archive_id}')
 
     def print_gallery_info(self):
         """Print Mirador gallery info"""
