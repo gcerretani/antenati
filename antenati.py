@@ -4,149 +4,157 @@ antenati.py: a tool to download data from the Portale Antenati
 """
 
 __author__      = 'Giovanni Cerretani'
-__copyright__   = 'Copyright (c) 2021, Giovanni Cerretani'
+__copyright__   = 'Copyright (c) 2022, Giovanni Cerretani'
 __license__     = 'MIT License'
-__version__     = '2.1'
+__version__     = '2.2'
 
-import argparse
-import json
-import os
-import re
-import concurrent.futures
-import certifi
-import urllib3
-import click
-import slugify
-import humanize
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from json import loads
+from mimetypes import guess_extension, guess_type
+from os import path, mkdir, chdir
+from re import search
+from certifi import where
+from urllib3 import PoolManager, HTTPSConnectionPool
+from click import echo, confirm
+from slugify import slugify
+from humanize import naturalsize
+from tqdm import tqdm
 
-def get_mirador_manifest(url):
-    """Ger Mirador manifest from Portale Antenati gallery page"""
-    pool_manager = urllib3.PoolManager(
-                       cert_reqs='CERT_REQUIRED',
-                       ca_certs=certifi.where()
-    )
-    http_reply = pool_manager.request('GET', url)
-    manifest_url = None
-    for line in http_reply.data.decode('utf-8').split('\n'):
-        if 'manifestId' in line:
-            url_pattern = re.search(r"'([A-Za-z0-9.:/-]*)'", line)
-            manifest_url = url_pattern.group(1)
-    if not manifest_url:
-        raise RuntimeError(f'No Mirador manifest found at {url}')
-    http_reply = pool_manager.request('GET', manifest_url)
-    return json.loads(http_reply.data.decode('utf-8'))
+class AntenatiDownloader:
+    """Downloader class"""
 
-def print_mirador_manifest_info(manifest):
-    """Print Mirador gallery info"""
-    for metadata in manifest['metadata']:
-        label = metadata['label']
-        value = metadata['value']
-        print(f'{label:<25}{value}')
-    size = len(manifest['sequences'][0]['canvases'])
-    print(f'{size} images found.')
+    def __init__(self, archive_url):
+        self.archive_url = archive_url
+        self.manifest = self.__get_mirador_manifest()
+        self.canvases = self.manifest['sequences'][0]['canvases']
+        self.metadata = self.manifest['metadata']
+        self.dirname = self.__generate_dirname()
+        self.gallery_length = len(self.canvases)
+        self.gallery_size = 0
 
-def get_metadata_content(manifest, label):
-    return next((m['value'] for m in manifest['metadata'] if m['label'] == label), 'unknown')
-
-def generate_dirname(manifest):
-    """Generate directory name from info in Mirador manifest"""
-    archive_label = manifest['label']
-    archive_content_type = get_metadata_content(manifest, 'Tipologia')
-    archive_url = get_metadata_content(manifest, 'Vedi il registro')
-    archive_id = re.search(r'\d+', archive_url).group()
-    return slugify.slugify(f'{archive_label}-{archive_content_type}-{archive_id}')
-
-def check_dir(dirname):
-    """Check if directory already exists and chdir to it"""
-    if os.path.exists(dirname):
-        click.echo(f'Directory {dirname} already exists.')
-        click.confirm('Do you want to proceed?', abort=True)
-    else:
-        os.mkdir(dirname)
-    os.chdir(dirname)
-
-def print_dir(dirname):
-    print(f'Output directory: {dirname}')
-
-def get_img_data(img_desc):
-    """Get dictionary with image info"""
-    img = {}
-    label = slugify.slugify(img_desc['label'])
-    img['url'] = img_desc['images'][0]['resource']['@id']
-    img['filename'] = f'img_archive_{label}.jpg'
-    return img
-
-def run(img, pool):
-    """Executor to be run on a thread"""
-    http_reply = pool.request_encode_url('GET', img['url'])
-    with open(img['filename'], 'wb') as img_file:
-        img_file.write(http_reply.data)
-    http_reply_size = len(http_reply.data)
-    return http_reply_size
-
-def get_images(manifest, n_workers, n_connections):
-    """Main function spanning run function in a thread pool"""
-    total_size = 0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
-        pool_http = urllib3.HTTPSConnectionPool(
-                        host='iiif-antenati.san.beniculturali.it',
-                        maxsize=n_connections,
-                        block=True,
+    def __get_mirador_manifest(self):
+        """Get Mirador manifest as JSON from Portale Antenati gallery page"""
+        pool_manager = PoolManager(
                         cert_reqs='CERT_REQUIRED',
-                        ca_certs=certifi.where()
+                        ca_certs=where()
         )
-        canvases = manifest['sequences'][0]['canvases']
-        img_list = [ get_img_data(i) for i in canvases ]
-        future_img = { executor.submit(run, i, pool_http): i for i in img_list }
-        for future in concurrent.futures.as_completed(future_img):
-            img = future_img[future]
-            filename = img['filename']
-            try:
-                size = future.result()
-            except RuntimeError as exc:
-                print(f'{filename} error ({exc})')
-            else:
-                total_size = total_size + size
-                print(f'{filename} done ({humanize.naturalsize(size)})')
-    return total_size
+        http_reply = pool_manager.request('GET', self.archive_url)
+        html_content = http_reply.data.decode('utf-8').split('\n')
+        manifest_line = next((l for l in html_content if 'manifestId' in l), None)
+        if not manifest_line:
+            raise RuntimeError(f'No Mirador manifest found at { self.archive_url}')
+        manifest_url_pattern = search(r'\'([A-Za-z0-9.:/-]*)\'', manifest_line)
+        if not manifest_url_pattern:
+            raise RuntimeError(f'Invalid Mirador manifest line found at { self.archive_url}')
+        manifest_url = manifest_url_pattern.group(1)
+        http_reply = pool_manager.request('GET', manifest_url)
+        return loads(http_reply.data.decode('utf-8'))
 
-def print_result(total_size):
-    """Print summary"""
-    print(f'Done. Total size: {humanize.naturalsize(total_size)}')
+    def __get_metadata_content(self, label):
+        """Get metadata content of Mirador manifest given its label"""
+        try:
+            return next((i['value'] for i in self.metadata if i['label'] == label))
+        except StopIteration as exc:
+            raise RuntimeError(f'Cannot get {label} from manifest') from exc
+
+    def __generate_dirname(self):
+        """Generate directory name from info in Mirador manifest"""
+        archive_label = self.manifest['label']
+        archive_content_type = self.__get_metadata_content('Tipologia')
+        archive_id_pattern = search(r'(\d+)', self.archive_url)
+        if not archive_id_pattern:
+            raise RuntimeError(f'Cannot get archive ID from {self.archive_url}')
+        archive_id = archive_id_pattern.group(1)
+        return slugify(f'{archive_label}-{archive_content_type}-{archive_id}')
+
+    def print_gallery_info(self):
+        """Print Mirador gallery info"""
+        for i in self.metadata:
+            label = i['label']
+            value = i['value']
+            print(f'{label:<25}{value}')
+        print(f'{self.gallery_length} images found.')
+
+    def check_dir(self):
+        """Check if directory already exists and chdir to it"""
+        print(f'Output directory: {self.dirname}')
+        if path.exists(self.dirname):
+            echo(f'Directory {self.dirname} already exists.')
+            confirm('Do you want to proceed?', abort=True)
+        else:
+            mkdir(self.dirname)
+        chdir(self.dirname)
+
+    @staticmethod
+    def __run(pool, canvas):
+        url = canvas['images'][0]['resource']['@id']
+        guessed_type = guess_type(url)
+        guessed_extension = guess_extension(guessed_type[0])
+        label = slugify(canvas['label'])
+        filename = f'img_archive_{label}{guessed_extension}'
+        http_reply = pool.request_encode_url('GET', url)
+        with open(filename, 'wb') as img_file:
+            img_file.write(http_reply.data)
+        http_reply_size = len(http_reply.data)
+        return http_reply_size
+
+    def get_images(self, n_workers, n_connections):
+        """Main function spanning run function in a thread pool"""
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            pool = HTTPSConnectionPool(
+                            host='iiif-antenati.san.beniculturali.it',
+                            maxsize=n_connections,
+                            block=True,
+                            cert_reqs='CERT_REQUIRED',
+                            ca_certs=where()
+            )
+            future_img = { executor.submit(self.__run, pool, i): i for i in self.canvases }
+            with tqdm(total=self.gallery_length, unit='img') as progress_results:
+                for future in as_completed(future_img):
+                    progress_results.update(1)
+                    canvas = future_img[future]
+                    label = canvas['label']
+                    try:
+                        size = future.result()
+                    except RuntimeError as exc:
+                        progress_results.write(f'{label} error ({exc})')
+                    else:
+                        self.gallery_size += size
+
+    def print_summary(self):
+        """Print summary"""
+        print(f'Done. Total size: {naturalsize(self.gallery_size)}')
 
 def main():
     """Main"""
 
     # Parse arguments
-    parser = argparse.ArgumentParser(
+    parser = ArgumentParser(
                 description=__doc__,
-                formatter_class=argparse.ArgumentDefaultsHelpFormatter
+                epilog=__copyright__,
+                formatter_class=ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
     parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=8)
     parser.add_argument('-c', '--nconn', type=int, help='max n. of connections', default=4)
+    parser.add_argument('-v', '--version', action='version', version=__version__)
     args = parser.parse_args()
 
-    # Get Mirador manifest from HTTP
-    manifest = get_mirador_manifest(args.url)
+    # Initialize
+    downloader = AntenatiDownloader(args.url)
 
-    # Print manifest info
-    print_mirador_manifest_info(manifest)
-
-    # Get directory name from metadata
-    dirname = generate_dirname(manifest)
-
-    # Print dirname
-    print_dir(dirname)
+    # Print gallery info
+    downloader.print_gallery_info()
 
     # Check if directory already exists and chdir to it
-    check_dir(dirname)
+    downloader.check_dir()
 
     # Run
-    total_size = get_images(manifest, args.nthreads, args.nconn)
+    downloader.get_images(args.nthreads, args.nconn)
 
-    # Done
-    print_result(total_size)
+    # Print summary
+    downloader.print_summary()
 
 if __name__ == '__main__':
     main()
