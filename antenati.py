@@ -26,10 +26,8 @@ class AntenatiDownloader:
 
     def __init__(self, archive_url):
         self.archive_url = archive_url
-        manifest = self.__get_mirador_manifest()
-        self.canvases = manifest['sequences'][0]['canvases']
-        self.metadata = manifest['metadata']
-        self.label = manifest['label']
+        self.manifest = self.__get_mirador_manifest()
+        self.canvases = self.manifest['sequences'][0]['canvases']
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
         self.gallery_size = 0
@@ -55,22 +53,23 @@ class AntenatiDownloader:
     def __get_metadata_content(self, label):
         """Get metadata content of Mirador manifest given its label"""
         try:
-            return next((i['value'] for i in self.metadata if i['label'] == label))
+            return next((i['value'] for i in self.manifest['metadata'] if i['label'] == label))
         except StopIteration as exc:
             raise RuntimeError(f'Cannot get {label} from manifest') from exc
 
     def __generate_dirname(self):
         """Generate directory name from info in Mirador manifest"""
+        archive_label = self.manifest['label']
         archive_content_type = self.__get_metadata_content('Tipologia')
         archive_id_pattern = search(r'(\d+)', self.archive_url)
         if not archive_id_pattern:
             raise RuntimeError(f'Cannot get archive ID from {self.archive_url}')
         archive_id = archive_id_pattern.group(1)
-        return slugify(f'{self.label}-{archive_content_type}-{archive_id}')
+        return slugify(f'{archive_label}-{archive_content_type}-{archive_id}')
 
     def print_gallery_info(self):
         """Print Mirador gallery info"""
-        for i in self.metadata:
+        for i in self.manifest['metadata']:
             label = i['label']
             value = i['value']
             print(f'{label:<25}{value}')
@@ -87,19 +86,19 @@ class AntenatiDownloader:
         chdir(self.dirname)
 
     @staticmethod
-    def __run(pool, canvas):
+    def __thread_main(pool, canvas):
         url = canvas['images'][0]['resource']['@id']
         guessed_type = guess_type(url)
         guessed_extension = guess_extension(guessed_type[0])
         label = slugify(canvas['label'])
         filename = f'img_archive_{label}{guessed_extension}'
-        http_reply = pool.request_encode_url('GET', url)
+        http_reply = pool.request('GET', url)
         with open(filename, 'wb') as img_file:
             img_file.write(http_reply.data)
         http_reply_size = len(http_reply.data)
         return http_reply_size
 
-    def get_images(self, n_workers, n_connections):
+    def run(self, n_workers, n_connections):
         """Main function spanning run function in a thread pool"""
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             pool = HTTPSConnectionPool(
@@ -109,7 +108,7 @@ class AntenatiDownloader:
                             cert_reqs='CERT_REQUIRED',
                             ca_certs=where()
             )
-            future_img = { executor.submit(self.__run, pool, i): i for i in self.canvases }
+            future_img = { executor.submit(self.__thread_main, pool, i): i for i in self.canvases }
             with tqdm(total=self.gallery_length, unit='img') as progress_results:
                 for future in as_completed(future_img):
                     progress_results.update(1)
@@ -151,7 +150,7 @@ def main():
     downloader.check_dir()
 
     # Run
-    downloader.get_images(args.nthreads, args.nconn)
+    downloader.run(args.nthreads, args.nconn)
 
     # Print summary
     downloader.print_summary()
