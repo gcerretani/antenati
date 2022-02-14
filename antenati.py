@@ -26,28 +26,38 @@ class AntenatiDownloader:
 
     def __init__(self, archive_url):
         self.archive_url = archive_url
-        self.manifest = self.__get_mirador_manifest()
+        self.archive_id = self.__get_archive_id(self.archive_url)
+        self.manifest = self.__get_mirador_manifest(self.archive_url)
         self.canvases = self.manifest['sequences'][0]['canvases']
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
         self.gallery_size = 0
-
-    def __get_mirador_manifest(self):
+        
+    @staticmethod
+    def __get_archive_id(archive_url):
+        """Get numeric archive ID from the URL"""
+        archive_id_pattern = search(r'(\d+)', archive_url)
+        if not archive_id_pattern:
+            raise RuntimeError(f'Cannot get archive ID from {archive_url}')
+        return archive_id_pattern.group(1)
+        
+    @staticmethod
+    def __get_mirador_manifest(archive_url):
         """Get Mirador manifest as JSON from Portale Antenati gallery page"""
-        pool_manager = PoolManager(
+        pool = PoolManager(
                         cert_reqs='CERT_REQUIRED',
                         ca_certs=where()
         )
-        http_reply = pool_manager.request('GET', self.archive_url)
+        http_reply = pool.request('GET', archive_url)
         html_content = http_reply.data.decode('utf-8').split('\n')
         manifest_line = next((l for l in html_content if 'manifestId' in l), None)
         if not manifest_line:
-            raise RuntimeError(f'No Mirador manifest found at { self.archive_url}')
+            raise RuntimeError(f'No Mirador manifest found at { archive_url}')
         manifest_url_pattern = search(r'\'([A-Za-z0-9.:/-]*)\'', manifest_line)
         if not manifest_url_pattern:
-            raise RuntimeError(f'Invalid Mirador manifest line found at { self.archive_url}')
+            raise RuntimeError(f'Invalid Mirador manifest line found at { archive_url}')
         manifest_url = manifest_url_pattern.group(1)
-        http_reply = pool_manager.request('GET', manifest_url)
+        http_reply = pool.request('GET', manifest_url)
         return loads(http_reply.data.decode('utf-8'))
 
     def __get_metadata_content(self, label):
@@ -59,13 +69,10 @@ class AntenatiDownloader:
 
     def __generate_dirname(self):
         """Generate directory name from info in Mirador manifest"""
-        archive_label = self.manifest['label']
-        archive_content_type = self.__get_metadata_content('Tipologia')
-        archive_id_pattern = search(r'(\d+)', self.archive_url)
-        if not archive_id_pattern:
-            raise RuntimeError(f'Cannot get archive ID from {self.archive_url}')
-        archive_id = archive_id_pattern.group(1)
-        return slugify(f'{archive_label}-{archive_content_type}-{archive_id}')
+        archive_context = self.__get_metadata_content('Contesto archivistico')
+        archive_year = self.__get_metadata_content('Titolo')
+        archive_typology = self.__get_metadata_content('Tipologia')
+        return slugify(f'{archive_context}-{archive_year}-{archive_typology}-{self.archive_id}')
 
     def print_gallery_info(self):
         """Print Mirador gallery info"""
