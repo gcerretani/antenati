@@ -11,7 +11,7 @@ __version__     = '2.2'
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from json import loads
-from mimetypes import guess_extension, guess_type
+from mimetypes import guess_extension
 from os import path, mkdir, chdir
 from re import search
 from certifi import where
@@ -32,7 +32,7 @@ class AntenatiDownloader:
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
         self.gallery_size = 0
-        
+
     @staticmethod
     def __get_archive_id(archive_url):
         """Get numeric archive ID from the URL"""
@@ -40,7 +40,7 @@ class AntenatiDownloader:
         if not archive_id_pattern:
             raise RuntimeError(f'Cannot get archive ID from {archive_url}')
         return archive_id_pattern.group(1)
-        
+
     @staticmethod
     def __get_mirador_manifest(archive_url):
         """Get Mirador manifest as JSON from Portale Antenati gallery page"""
@@ -94,12 +94,17 @@ class AntenatiDownloader:
 
     @staticmethod
     def __thread_main(pool, canvas):
+        assert isinstance(pool, HTTPSConnectionPool)
         url = canvas['images'][0]['resource']['@id']
-        guessed_type = guess_type(url)
-        guessed_extension = guess_extension(guessed_type[0])
-        label = slugify(canvas['label'])
-        filename = f'img_archive_{label}{guessed_extension}'
         http_reply = pool.request('GET', url)
+        if http_reply.status != 200:
+            raise RuntimeError(f'{url}: HTTP error {http_reply.status} from ')
+        content_type = http_reply.headers['Content-Type']
+        extension = guess_extension(content_type)
+        if not extension:
+            raise RuntimeError(f'{url}: Unable to guess extension from Content-Type {content_type}')
+        label = slugify(canvas['label'])
+        filename = f'{label}{extension}'
         with open(filename, 'wb') as img_file:
             img_file.write(http_reply.data)
         http_reply_size = len(http_reply.data)
@@ -118,7 +123,7 @@ class AntenatiDownloader:
             future_img = { executor.submit(self.__thread_main, pool, i): i for i in self.canvases }
             with tqdm(total=self.gallery_length, unit='img') as progress_results:
                 for future in as_completed(future_img):
-                    progress_results.update(1)
+                    progress_results.update()
                     canvas = future_img[future]
                     label = canvas['label']
                     try:
