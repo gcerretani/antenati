@@ -34,30 +34,34 @@ class AntenatiDownloader:
         self.gallery_size = 0
 
     @staticmethod
-    def __get_archive_id(archive_url):
+    def __get_archive_id(url):
         """Get numeric archive ID from the URL"""
-        archive_id_pattern = search(r'(\d+)', archive_url)
+        archive_id_pattern = search(r'(\d+)', url)
         if not archive_id_pattern:
-            raise RuntimeError(f'Cannot get archive ID from {archive_url}')
+            raise RuntimeError(f'Cannot get archive ID from {url}')
         return archive_id_pattern.group(1)
 
     @staticmethod
-    def __get_mirador_manifest(archive_url):
+    def __get_mirador_manifest(url):
         """Get Mirador manifest as JSON from Portale Antenati gallery page"""
         pool = PoolManager(
-                        cert_reqs='CERT_REQUIRED',
-                        ca_certs=where()
+            cert_reqs='CERT_REQUIRED',
+            ca_certs=where()
         )
-        http_reply = pool.request('GET', archive_url)
+        http_reply = pool.request('GET', url)
+        if http_reply.status != 200:
+            raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         html_content = http_reply.data.decode('utf-8').split('\n')
         manifest_line = next((l for l in html_content if 'manifestId' in l), None)
         if not manifest_line:
-            raise RuntimeError(f'No Mirador manifest found at { archive_url}')
+            raise RuntimeError(f'No Mirador manifest found at {url}')
         manifest_url_pattern = search(r'\'([A-Za-z0-9.:/-]*)\'', manifest_line)
         if not manifest_url_pattern:
-            raise RuntimeError(f'Invalid Mirador manifest line found at { archive_url}')
+            raise RuntimeError(f'Invalid Mirador manifest line found at {url}')
         manifest_url = manifest_url_pattern.group(1)
         http_reply = pool.request('GET', manifest_url)
+        if http_reply.status != 200:
+            raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         return loads(http_reply.data.decode('utf-8'))
 
     def __get_metadata_content(self, label):
@@ -98,7 +102,7 @@ class AntenatiDownloader:
         url = canvas['images'][0]['resource']['@id']
         http_reply = pool.request('GET', url)
         if http_reply.status != 200:
-            raise RuntimeError(f'{url}: HTTP error {http_reply.status} from ')
+            raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         content_type = http_reply.headers['Content-Type']
         extension = guess_extension(content_type)
         if not extension:
@@ -110,26 +114,37 @@ class AntenatiDownloader:
         http_reply_size = len(http_reply.data)
         return http_reply_size
 
+    @staticmethod
+    def __executor(max_workers):
+        return ThreadPoolExecutor(max_workers=max_workers)
+
+    @staticmethod
+    def __pool(maxsize):
+        return HTTPSConnectionPool(
+            host='iiif-antenati.san.beniculturali.it',
+            maxsize=maxsize,
+            block=True,
+            cert_reqs='CERT_REQUIRED',
+            ca_certs=where()
+        )
+
+    @staticmethod
+    def __progress(total):
+        return tqdm(total=total, unit='img')
+
     def run(self, n_workers, n_connections):
         """Main function spanning run function in a thread pool"""
-        with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            pool = HTTPSConnectionPool(
-                            host='iiif-antenati.san.beniculturali.it',
-                            maxsize=n_connections,
-                            block=True,
-                            cert_reqs='CERT_REQUIRED',
-                            ca_certs=where()
-            )
+        with self.__executor(n_workers) as executor, self.__pool(n_connections) as pool:
             future_img = { executor.submit(self.__thread_main, pool, i): i for i in self.canvases }
-            with tqdm(total=self.gallery_length, unit='img') as progress_results:
+            with self.__progress(self.gallery_length) as progress:
                 for future in as_completed(future_img):
-                    progress_results.update()
+                    progress.update()
                     canvas = future_img[future]
                     label = canvas['label']
                     try:
                         size = future.result()
                     except RuntimeError as exc:
-                        progress_results.write(f'{label} error ({exc})')
+                        progress.write(f'{label} error ({exc})')
                     else:
                         self.gallery_size += size
 
@@ -142,9 +157,9 @@ def main():
 
     # Parse arguments
     parser = ArgumentParser(
-                description=__doc__,
-                epilog=__copyright__,
-                formatter_class=ArgumentDefaultsHelpFormatter
+        description=__doc__,
+        epilog=__copyright__,
+        formatter_class=ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
     parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=8)
