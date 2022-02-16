@@ -14,7 +14,7 @@ Aprite un terminale. La PowerShell è la soluzione più semplice e moderna: cerc
 
 Controllate di essere nella cartella giusta. Eseguite:
 
-    ld
+    ls
 
 e guardate che ci sia il contenuto di questo repository.
 
