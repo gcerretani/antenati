@@ -3,16 +3,23 @@ A tool to download data from the *[Portale Antenati](http://www.antenati.san.ben
 
 Since the website tends to be pretty slow in the evening, we present a script to help the retrieval of the documents for your family tree. The script allows you to download **all the images of multiple archive at the same time** (launching multiple instance of the script), whithout any human action. Just launch the script, and have a coffee while it downloads all the stuff for you.
 
-## Usage 
-To install the dependencies, just use the classic:
+## Requirements
+The software is written in Python 3 and tested with Python 3.6. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
+
+## Usage
+Open your preferite terminal and change directory to where you've extracted the content of this repo. Then execute the following commands.
+
+### Install the dependencies
+The first time you will have to install the dependencies:
 
     pip install -r requirements.txt
 
-Then, run the script putting as first argument the first page of a collection you want to download:
+### Run
+To download the images of a gallery, execute the script passing the URL of a collection you want to download as argument:
 
     python3 antenati.py <URL of the album>
 
-The files are put to a new folder named as *ARCHIVE-PLACE-YEAR-TYPE-ID* of the downloaded archive. For more options, see the help
+The files will be downloaded to a new folder named as *ARCHIVE-PLACE-YEAR-TYPE-ID* of the downloaded archive. For more options, see the help:
 
     python3 antenati.py -h
 
