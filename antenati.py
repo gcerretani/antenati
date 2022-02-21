@@ -10,6 +10,7 @@ __version__     = '2.2'
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from cgi import parse_header
 from json import loads
 from mimetypes import guess_extension
 from os import path, mkdir, chdir
@@ -27,11 +28,15 @@ class AntenatiDownloader:
     def __init__(self, archive_url):
         self.archive_url = archive_url
         self.archive_id = self.__get_archive_id(self.archive_url)
-        self.manifest = self.__get_mirador_manifest(self.archive_url)
+        self.manifest = self.__get_iiif_manifest(self.archive_url)
         self.canvases = self.manifest['sequences'][0]['canvases']
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
         self.gallery_size = 0
+
+    @staticmethod
+    def __http_headers():
+        return { 'User-Agent': f'antenati/{__version__}' }
 
     @staticmethod
     def __get_archive_id(url):
@@ -42,44 +47,47 @@ class AntenatiDownloader:
         return archive_id_pattern.group(1)
 
     @staticmethod
-    def __get_mirador_manifest(url):
-        """Get Mirador manifest as JSON from Portale Antenati gallery page"""
+    def __get_iiif_manifest(url):
+        """Get IIIF manifest as JSON from Portale Antenati gallery page"""
         pool = PoolManager(
+            headers=AntenatiDownloader.__http_headers(),
             cert_reqs='CERT_REQUIRED',
             ca_certs=where()
         )
         http_reply = pool.request('GET', url)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
-        html_content = http_reply.data.decode('utf-8').split('\n')
+        content_type = parse_header(http_reply.headers['Content-Type'])
+        html_content = http_reply.data.decode(content_type[1]['charset']).split('\n')
         manifest_line = next((l for l in html_content if 'manifestId' in l), None)
         if not manifest_line:
-            raise RuntimeError(f'No Mirador manifest found at {url}')
+            raise RuntimeError(f'No IIIF manifest found at {url}')
         manifest_url_pattern = search(r'\'([A-Za-z0-9.:/-]*)\'', manifest_line)
         if not manifest_url_pattern:
-            raise RuntimeError(f'Invalid Mirador manifest line found at {url}')
+            raise RuntimeError(f'Invalid IIIF manifest line found at {url}')
         manifest_url = manifest_url_pattern.group(1)
         http_reply = pool.request('GET', manifest_url)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
-        return loads(http_reply.data.decode('utf-8'))
+        content_type = parse_header(http_reply.headers['Content-Type'])
+        return loads(http_reply.data.decode(content_type[1]['charset']))
 
     def __get_metadata_content(self, label):
-        """Get metadata content of Mirador manifest given its label"""
+        """Get metadata content of IIIF manifest given its label"""
         try:
             return next((i['value'] for i in self.manifest['metadata'] if i['label'] == label))
         except StopIteration as exc:
             raise RuntimeError(f'Cannot get {label} from manifest') from exc
 
     def __generate_dirname(self):
-        """Generate directory name from info in Mirador manifest"""
+        """Generate directory name from info in IIIF manifest"""
         archive_context = self.__get_metadata_content('Contesto archivistico')
         archive_year = self.__get_metadata_content('Titolo')
         archive_typology = self.__get_metadata_content('Tipologia')
         return slugify(f'{archive_context}-{archive_year}-{archive_typology}-{self.archive_id}')
 
     def print_gallery_info(self):
-        """Print Mirador gallery info"""
+        """Print IIIF gallery info"""
         for i in self.manifest['metadata']:
             label = i['label']
             value = i['value']
@@ -103,10 +111,10 @@ class AntenatiDownloader:
         http_reply = pool.request('GET', url)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
-        content_type = http_reply.headers['Content-Type']
-        extension = guess_extension(content_type)
+        content_type = parse_header(http_reply.headers['Content-Type'])
+        extension = guess_extension(content_type[0])
         if not extension:
-            raise RuntimeError(f'{url}: Unable to guess extension from Content-Type {content_type}')
+            raise RuntimeError(f'{url}: Unable to guess extension "{content_type[0]}"')
         label = slugify(canvas['label'])
         filename = f'{label}{extension}'
         with open(filename, 'wb') as img_file:
@@ -124,6 +132,7 @@ class AntenatiDownloader:
             host='iiif-antenati.san.beniculturali.it',
             maxsize=maxsize,
             block=True,
+            headers=AntenatiDownloader.__http_headers(),
             cert_reqs='CERT_REQUIRED',
             ca_certs=where()
         )
