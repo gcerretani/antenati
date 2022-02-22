@@ -36,8 +36,10 @@ class AntenatiDownloader:
 
     @staticmethod
     def __http_headers():
-        user_agent = f'antenati/{__version__}'
-        return make_headers(accept_encoding=True, user_agent=user_agent)
+        return make_headers(
+            accept_encoding=True,
+            user_agent=f'antenati/{__version__}'
+        )
 
     @staticmethod
     def __get_archive_id(url):
