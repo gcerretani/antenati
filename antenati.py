@@ -16,7 +16,7 @@ from mimetypes import guess_extension
 from os import path, mkdir, chdir
 from re import search
 from certifi import where
-from urllib3 import PoolManager, HTTPSConnectionPool
+from urllib3 import PoolManager, HTTPSConnectionPool, HTTPResponse, make_headers
 from click import echo, confirm
 from slugify import slugify
 from humanize import naturalsize
@@ -36,7 +36,8 @@ class AntenatiDownloader:
 
     @staticmethod
     def __http_headers():
-        return { 'User-Agent': f'antenati/{__version__}' }
+        user_agent = f'antenati/{__version__}'
+        return make_headers(accept_encoding=True, user_agent=user_agent)
 
     @staticmethod
     def __get_archive_id(url):
@@ -55,6 +56,7 @@ class AntenatiDownloader:
             ca_certs=where()
         )
         http_reply = pool.request('GET', url)
+        assert isinstance(http_reply, HTTPResponse)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         content_type = parse_header(http_reply.headers['Content-Type'])
@@ -67,6 +69,7 @@ class AntenatiDownloader:
             raise RuntimeError(f'Invalid IIIF manifest line found at {url}')
         manifest_url = manifest_url_pattern.group(1)
         http_reply = pool.request('GET', manifest_url)
+        assert isinstance(http_reply, HTTPResponse)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         content_type = parse_header(http_reply.headers['Content-Type'])
@@ -109,6 +112,7 @@ class AntenatiDownloader:
         assert isinstance(pool, HTTPSConnectionPool)
         url = canvas['images'][0]['resource']['@id']
         http_reply = pool.request('GET', url)
+        assert isinstance(http_reply, HTTPResponse)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         content_type = parse_header(http_reply.headers['Content-Type'])
