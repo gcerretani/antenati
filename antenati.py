@@ -14,7 +14,6 @@ from cgi import parse_header
 from json import loads
 from mimetypes import guess_extension
 from os import path, mkdir, chdir
-from random import randint
 from re import search
 from certifi import where
 from urllib3 import PoolManager, HTTPSConnectionPool, HTTPResponse, make_headers
@@ -37,9 +36,7 @@ class AntenatiDownloader:
 
     @staticmethod
     def __user_agent():
-        random_maj_ver = randint(94, 97)
-        ver = f'{random_maj_ver}.0'
-        return f'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{ver}) Gecko/20100101 Firefox/{ver}'
+        return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:97.0) Gecko/20100101 Firefox/97.0'
 
     @staticmethod
     def __http_headers():
