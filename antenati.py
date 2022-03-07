@@ -14,6 +14,7 @@ from cgi import parse_header
 from json import loads
 from mimetypes import guess_extension
 from os import path, mkdir, chdir
+from random import randint
 from re import search
 from certifi import where
 from urllib3 import PoolManager, HTTPSConnectionPool, HTTPResponse, make_headers
@@ -35,10 +36,16 @@ class AntenatiDownloader:
         self.gallery_size = 0
 
     @staticmethod
+    def __user_agent():
+        random_maj_ver = randint(90, 97)
+        ver = f'{random_maj_ver}.0'
+        return f'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{ver}) Gecko/20100101 Firefox/{ver}'
+
+    @staticmethod
     def __http_headers():
         return make_headers(
             accept_encoding=True,
-            user_agent='Mozilla/5.0 (Android 4.4; Mobile; rv:41.0) Gecko/41.0 Firefox/41.0'
+            user_agent=AntenatiDownloader.__user_agent()
         )
 
     @staticmethod
