@@ -37,7 +37,7 @@ class AntenatiDownloader:
 
     @staticmethod
     def __user_agent():
-        random_maj_ver = randint(90, 97)
+        random_maj_ver = randint(94, 97)
         ver = f'{random_maj_ver}.0'
         return f'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{ver}) Gecko/20100101 Firefox/{ver}'
 
