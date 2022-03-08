@@ -14,6 +14,7 @@ from cgi import parse_header
 from json import loads
 from mimetypes import guess_extension
 from os import path, mkdir, chdir
+from random import randint
 from re import search
 from certifi import where
 from urllib3 import PoolManager, HTTPSConnectionPool, HTTPResponse, make_headers
@@ -36,11 +37,16 @@ class AntenatiDownloader:
 
     @staticmethod
     def __user_agent():
-        return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:97.0) Gecko/20100101 Firefox/97.0'
+        # Since 03/2022 SAN server return 403 for requests with non standard User-Agent.
+        # Hack based on Firefox OS because it is the shortest User-Agent accepted
+        random_firefox_version = randint(80, 97)
+        ver = f'{random_firefox_version}.0'
+        return f'Mozilla/5.0 (Mobile; rv:{ver}) Gecko/{ver} Firefox/{ver}'
 
     @staticmethod
     def __http_headers():
         return make_headers(
+            keep_alive=True,
             accept_encoding=True,
             user_agent=AntenatiDownloader.__user_agent()
         )
