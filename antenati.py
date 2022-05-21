@@ -43,14 +43,15 @@ class AntenatiDownloader:
             keep_alive=True,
             accept_encoding=True
         )
-        # Since 03/2022 SAN server return 403 for requests with non standard User-Agent.
-        # Hack based on Firefox OS because it is the shortest User-Agent accepted
+        # Update 05/2022:
+        # SAN server return 403 if HTTP headers are not properly set.
+        # - User-Agent: not required, but was required in the past
+        # - Referer: required
+        # - Origin: not required
+        # Not required headers are kept, in case new filters are added.
         ver = f'{randint(80, 97)}.0'
         headers['User-Agent'] = f'Mozilla/5.0 (Mobile; rv:{ver}) Gecko/{ver} Firefox/{ver}'
-        # Since 05/2022 SAN server return 403 for requests without Referer.
         headers['Referer'] = 'https://www.antenati.san.beniculturali.it/'
-        # Since 05/2022 User-Agent seems not needed anymnore. We keep it, adding
-        # also Origin in case a filted is added in future.
         headers['Origin'] = 'https://www.antenati.san.beniculturali.it'
         return headers
 
