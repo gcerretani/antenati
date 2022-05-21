@@ -36,22 +36,22 @@ class AntenatiDownloader:
         self.gallery_size = 0
 
     @staticmethod
-    def __user_agent():
-        # Since 03/2022 SAN server return 403 for requests with non standard User-Agent.
-        # Hack based on Firefox OS because it is the shortest User-Agent accepted
-        random_firefox_version = randint(80, 97)
-        ver = f'{random_firefox_version}.0'
-        return f'Mozilla/5.0 (Mobile; rv:{ver}) Gecko/{ver} Firefox/{ver}'
-
-    @staticmethod
     def __http_headers():
+        """Generate HTTP headers to improve speed and to behave as a browser"""
+        # Default headers to reduce data transfers
         headers = make_headers(
             keep_alive=True,
-            accept_encoding=True,
-            user_agent=AntenatiDownloader.__user_agent()
+            accept_encoding=True
         )
-        # Since 05/2022 SAN server return 403 for requests without referer.
-        headers['referer'] = 'https://www.antenati.san.beniculturali.it/'
+        # Since 03/2022 SAN server return 403 for requests with non standard User-Agent.
+        # Hack based on Firefox OS because it is the shortest User-Agent accepted
+        ver = f'{randint(80, 97)}.0'
+        headers['User-Agent'] = f'Mozilla/5.0 (Mobile; rv:{ver}) Gecko/{ver} Firefox/{ver}'
+        # Since 05/2022 SAN server return 403 for requests without Referer.
+        headers['Referer'] = 'https://www.antenati.san.beniculturali.it/'
+        # Since 05/2022 User-Agent seems not needed anymnore. We keep it, adding
+        # also Origin in case a filted is added in future.
+        headers['Origin'] = 'https://www.antenati.san.beniculturali.it'
         return headers
 
     @staticmethod
