@@ -45,11 +45,14 @@ class AntenatiDownloader:
 
     @staticmethod
     def __http_headers():
-        return make_headers(
+        headers = make_headers(
             keep_alive=True,
             accept_encoding=True,
             user_agent=AntenatiDownloader.__user_agent()
         )
+        # Since 05/2022 SAN server return 403 for requests without referer.
+        headers['referer'] = 'https://www.antenati.san.beniculturali.it/'
+        return headers
 
     @staticmethod
     def __get_archive_id(url):

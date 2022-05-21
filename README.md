@@ -26,10 +26,10 @@ The files will be downloaded to a new folder named as *ARCHIVE-PLACE-YEAR-TYPE-I
 ### Example:
 In the website, navigate to the archive you want to download. For example, for the people born in Viareggio in 1807 you should find the page:
 
-[https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549](https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549)
+[https://www.antenati.san.beniculturali.it/ark:/12657/an_ua19944535/w9DWR8x](https://www.antenati.san.beniculturali.it/ark:/12657/an_ua19944535/w9DWR8x)
 
 Then, copy the link to the first page, and call the script with that link as argument:
 
-    python3 antenati.py https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549
+    python3 antenati.py https://www.antenati.san.beniculturali.it/ark:/12657/an_ua19944535/w9DWR8x
 
 The results will be placed in a folder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
