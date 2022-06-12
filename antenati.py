@@ -14,7 +14,6 @@ from cgi import parse_header
 from json import loads
 from mimetypes import guess_extension
 from os import path, mkdir, chdir
-from random import randint
 from re import search
 from certifi import where
 from urllib3 import PoolManager, HTTPSConnectionPool, HTTPResponse, make_headers
@@ -26,11 +25,11 @@ from tqdm import tqdm
 class AntenatiDownloader:
     """Downloader class"""
 
-    def __init__(self, archive_url):
-        self.archive_url = archive_url
-        self.archive_id = self.__get_archive_id(self.archive_url)
-        self.manifest = self.__get_iiif_manifest(self.archive_url)
-        self.canvases = self.manifest['sequences'][0]['canvases']
+    def __init__(self, url, first, last):
+        self.url = url
+        self.archive_id = self.__get_archive_id(self.url)
+        self.manifest = self.__get_iiif_manifest(self.url)
+        self.canvases = self.manifest['sequences'][0]['canvases'][first:last]
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
         self.gallery_size = 0
@@ -49,8 +48,7 @@ class AntenatiDownloader:
         # - Referer: required
         # - Origin: not required
         # Not required headers are kept, in case new filters are added.
-        ver = f'{randint(80, 97)}.0'
-        headers['User-Agent'] = f'Mozilla/5.0 (Mobile; rv:{ver}) Gecko/{ver} Firefox/{ver}'
+        headers['User-Agent'] = 'Mozilla/5.0 (Mobile; rv:97.0) Gecko/97.0 Firefox/97.0'
         headers['Referer'] = 'https://www.antenati.san.beniculturali.it/'
         headers['Origin'] = 'https://www.antenati.san.beniculturali.it'
         return headers
@@ -193,11 +191,13 @@ def main():
     parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
     parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=8)
     parser.add_argument('-c', '--nconn', type=int, help='max n. of connections', default=4)
+    parser.add_argument('-f', '--first', type=int, help='first image to download', default=0)
+    parser.add_argument('-l', '--last', type=int, help='first image NOT to download', default=None)
     parser.add_argument('-v', '--version', action='version', version=__version__)
     args = parser.parse_args()
 
     # Initialize
-    downloader = AntenatiDownloader(args.url)
+    downloader = AntenatiDownloader(args.url, args.first, args.last)
 
     # Print gallery info
     downloader.print_gallery_info()
