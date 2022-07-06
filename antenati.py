@@ -15,6 +15,7 @@ from json import loads
 from mimetypes import guess_extension
 from os import path, mkdir, chdir
 from re import search
+from re import findall
 from certifi import where
 from urllib3 import PoolManager, HTTPSConnectionPool, HTTPResponse, make_headers
 from click import echo, confirm
@@ -28,6 +29,7 @@ class AntenatiDownloader:
     def __init__(self, url, first, last):
         self.url = url
         self.archive_id = self.__get_archive_id(self.url)
+        self.archive_number = self.__get_archive_number(self.url)
         self.manifest = self.__get_iiif_manifest(self.url)
         self.canvases = self.manifest['sequences'][0]['canvases'][first:last]
         self.dirname = self.__generate_dirname()
@@ -61,6 +63,14 @@ class AntenatiDownloader:
             raise RuntimeError(f'Cannot get archive ID from {url}')
         return archive_id_pattern.group(1)
 
+    @staticmethod
+    def __get_archive_number(url):
+        """Get numeric archive number from the URL"""
+        archive_number_pattern = findall(r'(\d+)', url)
+        if not archive_number_pattern:
+            raise RuntimeError(f'Cannot get archive number from {url}')
+        return archive_number_pattern[1]
+    
     @staticmethod
     def __get_iiif_manifest(url):
         """Get IIIF manifest as JSON from Portale Antenati gallery page"""
@@ -101,7 +111,7 @@ class AntenatiDownloader:
         archive_context = self.__get_metadata_content('Contesto archivistico')
         archive_year = self.__get_metadata_content('Titolo')
         archive_typology = self.__get_metadata_content('Tipologia')
-        return slugify(f'{archive_context}-{archive_year}-{archive_typology}-{self.archive_id}')
+        return slugify(f'{archive_context}-{archive_year}-{archive_typology}-{self.archive_id}-{self.archive_number}')
 
     def print_gallery_info(self):
         """Print IIIF gallery info"""
