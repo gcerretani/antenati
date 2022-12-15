@@ -4,7 +4,7 @@ A tool to download data from the *[Portale Antenati](http://www.antenati.san.ben
 Since the website tends to be pretty slow in the evening, we present a script to help the retrieval of the documents for your family tree. The script allows you to download **all the images of multiple archive at the same time** (launching multiple instance of the script), whithout any human action. Just launch the script, and have a coffee while it downloads all the stuff for you.
 
 ## Requirements
-The software is written in Python 3 and tested with Python 3.6. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
+The software is written in Python 3 and tested with Python 3.7. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
 
 ## Usage
 Open your preferite terminal and change directory to where you've extracted the content of this repo. Then execute the following commands.
