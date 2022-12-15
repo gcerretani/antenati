@@ -10,7 +10,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python 3.6
+    - name: Set up Python 3.7
       uses: actions/setup-python@v2
       with:
         python-version: 3.7
@@ -20,4 +20,4 @@ jobs:
         pip install -r requirements.txt
     - name: Download test
       run: |
-        python antenati.py https://www.antenati.san.beniculturali.it/ark:/12657/an_ua19944535/w9DWR8x
+        python antenati.py "https://www.antenati.san.beniculturali.it/ark:/12657/an_ua19944535/w9DWR8x"
