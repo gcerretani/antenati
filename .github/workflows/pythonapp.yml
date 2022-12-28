@@ -21,11 +21,3 @@ jobs:
     - name: Download test
       run: |
         python antenati.py "https://www.antenati.san.beniculturali.it/ark:/12657/an_ua19944535/w9DWR8x"
-  deploy:
-    runs-on: ubuntu-20.04
-    steps:
-    - name: Publish package
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        password: ${{ secrets.PYPI_API_TOKEN }}
