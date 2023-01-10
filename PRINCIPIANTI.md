@@ -28,7 +28,7 @@ Dovrebbe impiegare qualche secondo. Questa cosa va fatta solamente la prima volt
 ### Via!
 Adesso siete pronti. Provate a scaricare un album copiando l'URL della pagina del Portale Antenati dopo a `python3 antenati.py`. Supponendo che siate interessati ai nati a Viareggio nel 1808, dovreste eseguire una cosa del genere:
 
-    python3 antenati.py https://www.antenati.san.beniculturali.it/detail-registry/?s_id=19944549
+    python3 antenati.py https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
 
 Buon divertimento!
 

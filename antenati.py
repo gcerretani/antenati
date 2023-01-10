@@ -60,8 +60,8 @@ class AntenatiDownloader:
         # - Origin: not required
         # Not required headers are kept, in case new filters are added.
         headers['User-Agent'] = 'Mozilla/5.0 (Mobile; rv:97.0) Gecko/97.0 Firefox/97.0'
-        headers['Referer'] = 'https://www.antenati.san.beniculturali.it/'
-        headers['Origin'] = 'https://www.antenati.san.beniculturali.it'
+        headers['Referer'] = 'https://antenati.cultura.gov.it/'
+        headers['Origin'] = 'https://antenati.cultura.gov.it'
         return headers
 
     @staticmethod
@@ -161,7 +161,7 @@ class AntenatiDownloader:
     @staticmethod
     def __pool(maxsize: int) -> HTTPSConnectionPool:
         return HTTPSConnectionPool(
-            host='iiif-antenati.san.beniculturali.it',
+            host='iiif-antenati.cultura.gov.it',
             maxsize=maxsize,
             block=True,
             headers=AntenatiDownloader.__http_headers(),
