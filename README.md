@@ -1,7 +1,7 @@
 # antenati
 A tool to download data from the *[Portale Antenati](http://antenati.cultura.gov.it/)*, the genealogy digital archive maintained by the italian **Ministero per i beni e le attività culturali**.
 
-Since the website tends to be pretty slow in the evening, we present a script to help the retrieval of the documents for your family tree. The script allows you to download **all the images of multiple archive at the same time** (launching multiple instance of the script), whithout any human action. Just launch the script, and have a coffee while it downloads all the stuff for you.
+Since the website tends to be pretty slow in the evening, we present a script to help the retrieval of the documents for your family tree. The script allows you to download **all the images of any archive at the same time**, without any human action. Just launch the script and have a coffee while it downloads all the stuff for you.
 
 ## Requirements
 The software is written in Python 3 and tested with Python 3.7. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
