@@ -31,7 +31,7 @@ jobs:
 
     - name: Build executable with PyInstaller
       run: |
-        pyinstaller --onefile antenati_gui.py
+        pyinstaller --windowed --onefile antenati_gui.py
 
     - name: Upload artifact for Windows
       if: runner.os == 'Windows'
