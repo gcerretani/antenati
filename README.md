@@ -3,18 +3,32 @@ A tool to download data from the *[Portale Antenati](http://antenati.cultura.gov
 
 Since the website tends to be pretty slow in the evening, we present a script to help the retrieval of the documents for your family tree. The script allows you to download **all the images of any archive at the same time**, without any human action. Just launch the script and have a coffee while it downloads all the stuff for you.
 
-## Requirements
+## GUI version
+
+Just get the executable from the release artifacts, and have fun!
+
+#### Example:
+In the website, navigate to the archive you want to download. For example, for the people born in Viareggio in 1807 you should find the page:
+
+[https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x](https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x)
+
+Then, copy the link to the first page, and paste it in the Archive URL field of the windows. Them, specify a destination folder:
+the results will be placed there, in a new subfolder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
+
+## CLI version
+
+### Requirements
 The software is written in Python 3 and tested with Python 3.7. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
 
-## Usage
+### Usage
 Open your preferite terminal and change directory to where you've extracted the content of this repo. Then execute the following commands.
 
-### Install the dependencies
+#### Install the dependencies
 The first time you will have to install the dependencies:
 
     pip install -r requirements.txt
 
-### Run
+#### Run
 To download the images of a gallery, execute the script passing the URL of a collection you want to download as argument:
 
     python3 antenati.py <URL of the album>
@@ -23,7 +37,7 @@ The files will be downloaded to a new folder named as *ARCHIVE-PLACE-YEAR-TYPE-I
 
     python3 antenati.py -h
 
-### Example:
+#### Example:
 In the website, navigate to the archive you want to download. For example, for the people born in Viareggio in 1807 you should find the page:
 
 [https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x](https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x)

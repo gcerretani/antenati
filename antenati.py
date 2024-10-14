@@ -6,23 +6,38 @@ antenati.py: a tool to download data from the Portale Antenati
 __author__ = 'Giovanni Cerretani'
 __copyright__ = 'Copyright (c) 2022, Giovanni Cerretani'
 __license__ = 'MIT License'
-__version__ = '2.5'
+__version__ = '3.0'
+__contact__ = 'https://gcerretani.github.io/antenati/'
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from email.message import EmailMessage
 from json import loads
 from mimetypes import guess_extension
 from os import chdir, mkdir, path
+from pathlib import Path
 from re import findall, search
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from certifi import where
-from urllib3 import HTTPResponse, HTTPSConnectionPool, PoolManager, make_headers
+from urllib3 import HTTPSConnectionPool, PoolManager, make_headers
 from click import echo, confirm
 from slugify import slugify
 from humanize import naturalsize
 from tqdm import tqdm
+
+
+_UpdaterType = Optional[Callable[[], None]]
+
+@dataclass
+class ProgressBar:
+    set_total: Callable[[int], None]
+    update: Callable[[], None]
+
+
+DEFAULT_N_THREADS: int = 8
+DEFAULT_N_CONNECTIONS: int = 4
 
 
 class AntenatiDownloader:
@@ -32,9 +47,8 @@ class AntenatiDownloader:
     archive_id: str
     manifest: Dict[str, Any]
     canvases: List[Dict[str, Any]]
-    dirname: str
+    dirname: Path
     gallery_length: int
-    gallery_size: int
 
     def __init__(self, url: str, first: int, last: int):
         self.url = url
@@ -43,7 +57,6 @@ class AntenatiDownloader:
         self.canvases = self.manifest['sequences'][0]['canvases'][first:last]
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
-        self.gallery_size = 0
 
     @staticmethod
     def __http_headers() -> Dict[str, Any]:
@@ -87,7 +100,7 @@ class AntenatiDownloader:
             cert_reqs='CERT_REQUIRED',
             ca_certs=where()
         )
-        http_reply: HTTPResponse = pool.request('GET', url)
+        http_reply = pool.request('GET', url)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         content_type = AntenatiDownloader.__parse_header(http_reply.headers['Content-Type'])
@@ -112,12 +125,12 @@ class AntenatiDownloader:
         except StopIteration as exc:
             raise RuntimeError(f'Cannot get {label} from manifest') from exc
 
-    def __generate_dirname(self) -> str:
+    def __generate_dirname(self) -> Path:
         """Generate directory name from info in IIIF manifest"""
         archive_context = self.__get_metadata_content('Contesto archivistico')
         archive_year = self.__get_metadata_content('Titolo')
         archive_typology = self.__get_metadata_content('Tipologia')
-        return slugify(f'{archive_context}-{archive_year}-{archive_typology}-{self.archive_id}')
+        return Path(slugify(f'{archive_context}-{archive_year}-{archive_typology}-{self.archive_id}'))
 
     def print_gallery_info(self) -> None:
         """Print IIIF gallery info"""
@@ -127,11 +140,16 @@ class AntenatiDownloader:
             print(f'{label:<25}{value}')
         print(f'{self.gallery_length} images found.')
 
-    def check_dir(self) -> None:
+    def check_dir(self, dirname: Optional[str] = None, interactive = True) -> None:
         """Check if directory already exists and chdir to it"""
+        if dirname is not None:
+            self.dirname = Path(dirname) / self.dirname
         print(f'Output directory: {self.dirname}')
         if path.exists(self.dirname):
-            echo(f'Directory {self.dirname} already exists.')
+            msg = f'Directory {self.dirname} already exists.'
+            if not interactive:
+                raise RuntimeError(msg)
+            echo(msg)
             confirm('Do you want to proceed?', abort=True)
         else:
             mkdir(self.dirname)
@@ -140,7 +158,7 @@ class AntenatiDownloader:
     @staticmethod
     def __thread_main(pool: HTTPSConnectionPool, canvas: Dict[str, Any]) -> int:
         url = canvas['images'][0]['resource']['@id']
-        http_reply: HTTPResponse = pool.request('GET', url)
+        http_reply = pool.request('GET', url)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
         content_type = AntenatiDownloader.__parse_header(http_reply.headers['Content-Type'])
@@ -169,29 +187,23 @@ class AntenatiDownloader:
             ca_certs=where()
         )
 
-    @staticmethod
-    def __progress(total: int) -> tqdm:
-        return tqdm(total=total, unit='img')
+    def run_cli(self, n_workers: int, n_connections) -> int:
+        """Main function spanning run function in a thread pool, with tqdm progress bar"""
+        with tqdm(unit='img') as progress:
+            progress_bar = ProgressBar(progress.reset, progress.update)
+            return self.run(n_workers, n_connections, progress_bar)
 
-    def run(self, n_workers: int, n_connections: int) -> None:
+    def run(self, n_workers: int, n_connections: int, progress: ProgressBar) -> int:
         """Main function spanning run function in a thread pool"""
         with self.__executor(n_workers) as executor, self.__pool(n_connections) as pool:
             future_img = {executor.submit(self.__thread_main, pool, i): i for i in self.canvases}
-            with self.__progress(self.gallery_length) as progress:
-                for future in as_completed(future_img):
-                    progress.update()
-                    canvas = future_img[future]
-                    label = canvas['label']
-                    try:
-                        size = future.result()
-                    except RuntimeError as exc:
-                        progress.write(f'{label} error ({exc})')
-                    else:
-                        self.gallery_size += size
-
-    def print_summary(self) -> None:
-        """Print summary"""
-        print(f'Done. Total size: {naturalsize(self.gallery_size)}')
+            progress.set_total(self.gallery_length)
+            gallery_size = 0
+            for future in as_completed(future_img):
+                progress.update()
+                size = future.result()
+                gallery_size += size
+            return gallery_size
 
 
 def main() -> None:
@@ -204,8 +216,8 @@ def main() -> None:
         formatter_class=ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
-    parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=8)
-    parser.add_argument('-c', '--nconn', type=int, help='max n. of connections', default=4)
+    parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=DEFAULT_N_CONNECTIONS)
+    parser.add_argument('-c', '--nconn', type=int, help='max n. of connections', default=DEFAULT_N_THREADS)
     parser.add_argument('-f', '--first', type=int, help='first image to download', default=0)
     parser.add_argument('-l', '--last', type=int, help='first image NOT to download', default=None)
     parser.add_argument('-v', '--version', action='version', version=__version__)
@@ -221,10 +233,10 @@ def main() -> None:
     downloader.check_dir()
 
     # Run
-    downloader.run(args.nthreads, args.nconn)
+    gallery_size = downloader.run_cli(args.nthreads, args.nconn)
 
     # Print summary
-    downloader.print_summary()
+    print(f'Done. Total size: {naturalsize(gallery_size)}')
 
 
 if __name__ == '__main__':
