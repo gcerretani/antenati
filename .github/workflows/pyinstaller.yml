@@ -11,15 +11,15 @@ jobs:
 
     strategy:
       matrix:
-        runs-on: ['ubuntu-240.04', 'macos-11', 'windows-2019']
+        runs-on: ['ubuntu-20.04', 'macos-12', 'windows-2019']
     runs-on: ${{ matrix.runs-on }}
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: 3.7
 
@@ -35,14 +35,14 @@ jobs:
 
     - name: Upload artifact for Windows
       if: runner.os == 'Windows'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: antenati_gui_windows.exe
         path: dist/antenati_gui.exe
 
     - name: Upload artifact for macOS and Ubuntu
       if: runner.os != 'Windows'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: antenati_gui_${{ matrix.runs-on }}
         path: dist/antenati_gui
