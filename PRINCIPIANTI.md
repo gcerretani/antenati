@@ -1,6 +1,6 @@
 # Istruzioni per principianti
 
-Scaricate la versione GUI dagli artefatti dell'ultima release. Trovate le versioni per Windows, Linux e macOS.
+Scaricate la versione GUI dagli [artefatti dell'ultima release](https://github.com/gcerretani/antenati/releases/tag/latest). Trovate le versioni per Windows, Linux e macOS.
 
 0. Lanciate l'eseguibile!
 1. Come URL inserite qualcosa tipo https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x.
