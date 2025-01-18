@@ -25,8 +25,8 @@ import antenati
 @dataclass
 class _ProgressBarSetter:
     progress_bar: ttk.Progressbar
-    total: int = field(default = 0)
-    n: int = field(default = 0)
+    total: int = field(default=0)
+    n: int = field(default=0)
 
     def set_total(self, total: int):
         """Set max value"""

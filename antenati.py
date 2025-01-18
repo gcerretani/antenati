@@ -10,6 +10,7 @@ __version__ = '3.0'
 __contact__ = 'https://gcerretani.github.io/antenati/'
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -18,7 +19,7 @@ from mimetypes import guess_extension
 from os import chdir, mkdir, path
 from pathlib import Path
 from re import findall, search
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Optional
 
 from certifi import where
 from urllib3 import HTTPSConnectionPool, PoolManager, make_headers
@@ -28,10 +29,9 @@ from humanize import naturalsize
 from tqdm import tqdm
 
 
-_UpdaterType = Optional[Callable[[], None]]
-
 @dataclass
 class ProgressBar:
+    """Progress Bar callbacks"""
     set_total: Callable[[int], None]
     update: Callable[[], None]
 
@@ -45,8 +45,8 @@ class AntenatiDownloader:
 
     url: str
     archive_id: str
-    manifest: Dict[str, Any]
-    canvases: List[Dict[str, Any]]
+    manifest: dict[str, Any]
+    canvases: list[dict[str, Any]]
     dirname: Path
     gallery_length: int
 
@@ -59,7 +59,7 @@ class AntenatiDownloader:
         self.gallery_length = len(self.canvases)
 
     @staticmethod
-    def __http_headers() -> Dict[str, Any]:
+    def __http_headers() -> dict[str, Any]:
         """Generate HTTP headers to improve speed and to behave as a browser"""
         # Default headers to reduce data transfers
         headers = make_headers(
@@ -93,7 +93,7 @@ class AntenatiDownloader:
         return msg.get_content_type(), msg['Content-Type'].params
 
     @staticmethod
-    def __get_iiif_manifest(url: str) -> Dict[str, Any]:
+    def __get_iiif_manifest(url: str) -> dict[str, Any]:
         """Get IIIF manifest as JSON from Portale Antenati gallery page"""
         pool = PoolManager(
             headers=AntenatiDownloader.__http_headers(),
@@ -156,7 +156,7 @@ class AntenatiDownloader:
         chdir(self.dirname)
 
     @staticmethod
-    def __thread_main(pool: HTTPSConnectionPool, canvas: Dict[str, Any]) -> int:
+    def __thread_main(pool: HTTPSConnectionPool, canvas: dict[str, Any]) -> int:
         url = canvas['images'][0]['resource']['@id']
         http_reply = pool.request('GET', url)
         if http_reply.status != 200:
@@ -190,7 +190,7 @@ class AntenatiDownloader:
     def run_cli(self, n_workers: int, n_connections) -> int:
         """Main function spanning run function in a thread pool, with tqdm progress bar"""
         with tqdm(unit='img') as progress:
-            progress_bar = ProgressBar(progress.reset, progress.update)
+            progress_bar = ProgressBar(progress.reset, progress.update)  # type: ignore
             return self.run(n_workers, n_connections, progress_bar)
 
     def run(self, n_workers: int, n_connections: int, progress: ProgressBar) -> int:

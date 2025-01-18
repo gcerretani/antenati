@@ -18,7 +18,7 @@ the results will be placed there, in a new subfolder named *archivio-di-stato-di
 ## CLI version
 
 ### Requirements
-The software is written in Python 3 and tested with Python 3.7. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
+The software is written in Python 3 and tested with Python 3.9. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
 
 ### Usage
 Open your preferite terminal and change directory to where you've extracted the content of this repo. Then execute the following commands.
