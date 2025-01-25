@@ -154,10 +154,6 @@ class _Window:
         gallery_size = future.result()
         tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(gallery_size)}')
 
-    def __set_footer_message(self, text: str) -> None:
-        """Set footer message"""
-        self.__footer_label.configure(text=text)
-
     @contextmanager
     def __in_progress(self):
         """Context manager to disable buttons"""
@@ -166,7 +162,6 @@ class _Window:
         try:
             yield
         finally:
-            self.__set_footer_message('')
             self.__footer_label.configure(text='')
             self.__download_button.configure(state=tk.NORMAL)
 

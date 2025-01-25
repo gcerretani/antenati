@@ -52,8 +52,8 @@ class AntenatiDownloader:
 
     def __init__(self, url: str, first: int, last: int):
         self.url = url
-        self.archive_id = self.__get_archive_id(self.url)
-        self.manifest = self.__get_iiif_manifest(self.url)
+        self.archive_id = self.__get_archive_id()
+        self.manifest = self.__get_iiif_manifest()
         self.canvases = self.manifest['sequences'][0]['canvases'][first:last]
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
@@ -77,12 +77,11 @@ class AntenatiDownloader:
         headers['Origin'] = 'https://antenati.cultura.gov.it'
         return headers
 
-    @staticmethod
-    def __get_archive_id(url: str) -> str:
+    def __get_archive_id(self) -> str:
         """Get numeric archive ID from the URL"""
-        archive_id_pattern = findall(r'(\d+)', url)
-        if not archive_id_pattern or len(archive_id_pattern) < 2:
-            raise RuntimeError(f'Cannot get archive ID from {url}')
+        archive_id_pattern = findall(r'(\d+)', self.url)
+        if len(archive_id_pattern) < 2:
+            raise RuntimeError(f'Cannot get archive ID from {self.url}')
         return archive_id_pattern[1]
 
     @staticmethod
@@ -92,30 +91,29 @@ class AntenatiDownloader:
         msg['Content-Type'] = string
         return msg.get_content_type(), msg['Content-Type'].params
 
-    @staticmethod
-    def __get_iiif_manifest(url: str) -> dict[str, Any]:
+    def __get_iiif_manifest(self) -> dict[str, Any]:
         """Get IIIF manifest as JSON from Portale Antenati gallery page"""
         pool = PoolManager(
-            headers=AntenatiDownloader.__http_headers(),
+            headers=self.__http_headers(),
             cert_reqs='CERT_REQUIRED',
             ca_certs=where()
         )
-        http_reply = pool.request('GET', url)
+        http_reply = pool.request('GET', self.url)
         if http_reply.status != 200:
-            raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
-        content_type = AntenatiDownloader.__parse_header(http_reply.headers['Content-Type'])
+            raise RuntimeError(f'{self.url}: HTTP error {http_reply.status}')
+        content_type = self.__parse_header(http_reply.headers['Content-Type'])
         html_content = http_reply.data.decode(content_type[1]['charset']).split('\n')
         manifest_line = next((line for line in html_content if 'manifestId' in line), None)
         if not manifest_line:
-            raise RuntimeError(f'No IIIF manifest found at {url}')
+            raise RuntimeError(f'No IIIF manifest found at {self.url}')
         manifest_url_pattern = search(r'\'([A-Za-z0-9.:/-]*)\'', manifest_line)
         if not manifest_url_pattern:
-            raise RuntimeError(f'Invalid IIIF manifest line found at {url}')
+            raise RuntimeError(f'Invalid IIIF manifest line found at {self.url}')
         manifest_url = manifest_url_pattern.group(1)
         http_reply = pool.request('GET', manifest_url)
         if http_reply.status != 200:
-            raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
-        content_type = AntenatiDownloader.__parse_header(http_reply.headers['Content-Type'])
+            raise RuntimeError(f'{self.url}: HTTP error {http_reply.status}')
+        content_type = self.__parse_header(http_reply.headers['Content-Type'])
         return loads(http_reply.data.decode(content_type[1]['charset']))
 
     def __get_metadata_content(self, label: str) -> str:
