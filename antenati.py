@@ -6,7 +6,7 @@ antenati.py: a tool to download data from the Portale Antenati
 __author__ = 'Giovanni Cerretani'
 __copyright__ = 'Copyright (c) 2022, Giovanni Cerretani'
 __license__ = 'MIT License'
-__version__ = '3.0'
+__version__ = '3.1'
 __contact__ = 'https://gcerretani.github.io/antenati/'
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
