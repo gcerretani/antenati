@@ -7,6 +7,8 @@ Since the website tends to be pretty slow in the evening, we present a script to
 
 Just get the executable from the [release artifacts](https://github.com/gcerretani/antenati/releases/latest), and have fun!
 
+![GUI Screenshot](https://github.com/gcerretani/antenati/blob/master/doc/gui_screenshot.png?raw=true)
+
 #### Example:
 In the website, navigate to the archive you want to download. For example, for the people born in Viareggio in 1807 you should find the page:
 
