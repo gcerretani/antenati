@@ -13,7 +13,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from email.message import EmailMessage
+from email.message import Message
 from json import loads
 from mimetypes import guess_extension
 from os import chdir, mkdir, path
@@ -22,7 +22,7 @@ from re import findall, search
 from typing import Any, Optional
 
 from certifi import where
-from urllib3 import HTTPSConnectionPool, PoolManager, make_headers
+from urllib3 import HTTPHeaderDict, HTTPSConnectionPool, PoolManager, make_headers
 from click import echo, confirm
 from slugify import slugify
 from humanize import naturalsize
@@ -66,15 +66,11 @@ class AntenatiDownloader:
             keep_alive=True,
             accept_encoding=True
         )
-        # Update 05/2022:
         # SAN server return 403 if HTTP headers are not properly set.
         # - User-Agent: not required, but was required in the past
         # - Referer: required
         # - Origin: not required
-        # Not required headers are kept, in case new filters are added.
-        headers['User-Agent'] = 'Mozilla/5.0 (Mobile; rv:97.0) Gecko/97.0 Firefox/97.0'
         headers['Referer'] = 'https://antenati.cultura.gov.it/'
-        headers['Origin'] = 'https://antenati.cultura.gov.it'
         return headers
 
     def __get_archive_id(self) -> str:
@@ -85,11 +81,18 @@ class AntenatiDownloader:
         return archive_id_pattern[1]
 
     @staticmethod
-    def __parse_header(string):
-        """Replacement for cgi.parse_header deprecated since Python 3.11"""
-        msg = EmailMessage()
-        msg['Content-Type'] = string
-        return msg.get_content_type(), msg['Content-Type'].params
+    def __get_content_type(headers: HTTPHeaderDict):
+        """Decode Content-Type header using email module."""
+        msg = Message()
+        msg['Content-Type'] = headers['Content-Type']
+        return msg.get_content_type()
+
+    @staticmethod
+    def __get_content_charset(headers: HTTPHeaderDict):
+        """Decode Content-Type header using email module."""
+        msg = Message()
+        msg['Content-Type'] = headers['Content-Type']
+        return msg.get_content_charset()
 
     def __get_iiif_manifest(self) -> dict[str, Any]:
         """Get IIIF manifest as JSON from Portale Antenati gallery page"""
@@ -101,8 +104,8 @@ class AntenatiDownloader:
         http_reply = pool.request('GET', self.url)
         if http_reply.status != 200:
             raise RuntimeError(f'{self.url}: HTTP error {http_reply.status}')
-        content_type = self.__parse_header(http_reply.headers['Content-Type'])
-        html_content = http_reply.data.decode(content_type[1]['charset']).split('\n')
+        charset = self.__get_content_charset(http_reply.headers)
+        html_content = http_reply.data.decode(charset).splitlines()
         manifest_line = next((line for line in html_content if 'manifestId' in line), None)
         if not manifest_line:
             raise RuntimeError(f'No IIIF manifest found at {self.url}')
@@ -113,8 +116,8 @@ class AntenatiDownloader:
         http_reply = pool.request('GET', manifest_url)
         if http_reply.status != 200:
             raise RuntimeError(f'{self.url}: HTTP error {http_reply.status}')
-        content_type = self.__parse_header(http_reply.headers['Content-Type'])
-        return loads(http_reply.data.decode(content_type[1]['charset']))
+        charset = self.__get_content_charset(http_reply.headers)
+        return loads(http_reply.data.decode(charset))
 
     def __get_metadata_content(self, label: str) -> str:
         """Get metadata content of IIIF manifest given its label"""
@@ -159,10 +162,10 @@ class AntenatiDownloader:
         http_reply = pool.request('GET', url)
         if http_reply.status != 200:
             raise RuntimeError(f'{url}: HTTP error {http_reply.status}')
-        content_type = AntenatiDownloader.__parse_header(http_reply.headers['Content-Type'])
-        extension = guess_extension(content_type[0])
+        content_type = AntenatiDownloader.__get_content_type(http_reply.headers)
+        extension = guess_extension(content_type)
         if not extension:
-            raise RuntimeError(f'{url}: Unable to guess extension "{content_type[0]}"')
+            raise RuntimeError(f'{url}: Unable to guess extension "{content_type}"')
         label = slugify(canvas['label'])
         filename = f'{label}{extension}'
         with open(filename, 'wb') as img_file:
