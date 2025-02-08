@@ -11,7 +11,7 @@ jobs:
 
     strategy:
       matrix:
-        runs-on: ['ubuntu-20.04', 'macos-12', 'windows-2019']
+        runs-on: ['ubuntu-20.04', 'windows-2022']
     runs-on: ${{ matrix.runs-on }}
 
     steps:
@@ -40,7 +40,7 @@ jobs:
         name: antenati_gui_windows.exe
         path: dist/antenati_gui.exe
 
-    - name: Upload artifact for macOS and Ubuntu
+    - name: Upload artifact for Ubuntu
       if: runner.os != 'Windows'
       uses: actions/upload-artifact@v4
       with:
