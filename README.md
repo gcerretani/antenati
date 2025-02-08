@@ -12,8 +12,7 @@ In the website, navigate to the archive you want to download. For example, for t
 
 [https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x](https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x)
 
-Then, copy the link to the first page, and paste it in the Archive URL field of the windows. Them, specify a destination folder:
-the results will be placed there, in a new subfolder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
+Copy the link to the first page, and paste it in the Archive URL field of the window. Then, specify a destination folder: the results will be placed there, in a new subfolder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
 
 ## CLI version
 
