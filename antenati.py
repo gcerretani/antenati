@@ -128,10 +128,10 @@ class AntenatiDownloader:
 
     def __generate_dirname(self) -> Path:
         """Generate directory name from info in IIIF manifest"""
-        archive_context = self.__get_metadata_content('Contesto archivistico')
-        archive_year = self.__get_metadata_content('Titolo')
-        archive_typology = self.__get_metadata_content('Tipologia')
-        return Path(slugify(f'{archive_context}-{archive_year}-{archive_typology}-{self.archive_id}'))
+        context = self.__get_metadata_content('Contesto archivistico')
+        year = self.__get_metadata_content('Titolo')
+        typology = self.__get_metadata_content('Tipologia')
+        return Path(slugify(f'{context}-{year}-{typology}-{self.archive_id}'))
 
     def print_gallery_info(self) -> None:
         """Print IIIF gallery info"""
@@ -158,6 +158,7 @@ class AntenatiDownloader:
 
     @staticmethod
     def __thread_main(pool: HTTPSConnectionPool, canvas: dict[str, Any]) -> int:
+        """Main function for each thread"""
         url = canvas['images'][0]['resource']['@id']
         http_reply = pool.request('GET', url)
         if http_reply.status != 200:
@@ -175,10 +176,12 @@ class AntenatiDownloader:
 
     @staticmethod
     def __executor(max_workers: int) -> ThreadPoolExecutor:
+        """Create ThreadPoolExecutor with max_workers threads"""
         return ThreadPoolExecutor(max_workers=max_workers)
 
     @staticmethod
     def __pool(maxsize: int) -> HTTPSConnectionPool:
+        """Create HTTPSConnectionPool with maxsize connections"""
         return HTTPSConnectionPool(
             host='iiif-antenati.cultura.gov.it',
             maxsize=maxsize,
@@ -217,8 +220,8 @@ def main() -> None:
         formatter_class=ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
-    parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=DEFAULT_N_CONNECTIONS)
-    parser.add_argument('-c', '--nconn', type=int, help='max n. of connections', default=DEFAULT_N_THREADS)
+    parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=DEFAULT_N_THREADS)
+    parser.add_argument('-c', '--nconn', type=int, help='max n. of connections', default=DEFAULT_N_CONNECTIONS)
     parser.add_argument('-f', '--first', type=int, help='first image to download', default=0)
     parser.add_argument('-l', '--last', type=int, help='first image NOT to download', default=None)
     parser.add_argument('-v', '--version', action='version', version=__version__)
