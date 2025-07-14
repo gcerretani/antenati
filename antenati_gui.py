@@ -152,7 +152,7 @@ class _Window:
                     return downloader.run(antenati.DEFAULT_N_THREADS, antenati.DEFAULT_N_CONNECTIONS, progressbar)
             future = exc.submit(cmd)
         gallery_size = future.result()
-        tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(gallery_size)}')
+        tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(gallery_size, True)}')
 
     @contextmanager
     def __in_progress(self):

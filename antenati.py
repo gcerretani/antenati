@@ -6,7 +6,7 @@ antenati.py: a tool to download data from the Portale Antenati
 __author__ = 'Giovanni Cerretani'
 __copyright__ = 'Copyright (c) 2022, Giovanni Cerretani'
 __license__ = 'MIT License'
-__version__ = '3.1'
+__version__ = '3.2'
 __contact__ = 'https://gcerretani.github.io/antenati/'
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
@@ -61,15 +61,16 @@ class AntenatiDownloader:
     @staticmethod
     def __http_headers() -> dict[str, Any]:
         """Generate HTTP headers to improve speed and to behave as a browser"""
-        # Default headers to reduce data transfers
-        headers = make_headers(
-            keep_alive=True,
-            accept_encoding=True
-        )
         # SAN server return 403 if HTTP headers are not properly set.
-        # - User-Agent: not required, but was required in the past
+        # - User-Agent: required
         # - Referer: required
         # - Origin: not required
+        # Other headers are set to improve performance.
+        headers = make_headers(
+            keep_alive=True,
+            accept_encoding=True,
+            user_agent='Mozilla/5.0 (Mobile; rv:97.0) Gecko/97.0 Firefox/97.0'
+        )
         headers['Referer'] = 'https://antenati.cultura.gov.it/'
         return headers
 
@@ -240,7 +241,7 @@ def main() -> None:
     gallery_size = downloader.run_cli(args.nthreads, args.nconn)
 
     # Print summary
-    print(f'Done. Total size: {naturalsize(gallery_size)}')
+    print(f'Done. Total size: {naturalsize(gallery_size, True)}')
 
 
 if __name__ == '__main__':
