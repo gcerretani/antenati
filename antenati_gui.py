@@ -72,6 +72,11 @@ class _Window:
         self.__menu = tk.Menu(self.__root)
         self.__root.configure(menu=self.__menu)
 
+        # Create variables
+        self.__url = tk.StringVar()
+        self.__size = tk.IntVar(value=antenati.DEFAULT_SIZE)
+        self.__path = tk.StringVar()
+
         # Populate entries
         self.__create_menu()
         self.__create_entries()
@@ -90,20 +95,22 @@ class _Window:
         entry_frame.pack(side=tk.TOP, fill=tk.X)
         url_label = tk.Label(entry_frame, text='Archive URL')
         url_label.grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
-        self.__url_textvariable = tk.StringVar()
-        url_entry = ttk.Entry(entry_frame, textvariable=self.__url_textvariable, width=100)
+        url_entry = ttk.Entry(entry_frame, textvariable=self.__url, width=100)
         url_entry.grid(row=0, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
-        self.__path_textvariable = tk.StringVar()
+        size_label = tk.Label(entry_frame, text='Size (in pixels)')
+        size_label.grid(row=1, column=0, padx=10, pady=5, sticky=tk.W)
+        size_entry = ttk.Spinbox(entry_frame, textvariable=self.__size, width=100, from_=0, to=5000, increment=100)
+        size_entry.grid(row=1, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
         path_label = tk.Label(entry_frame, text='Destination folder')
-        path_label.grid(row=1, column=0, padx=10, pady=5, sticky=tk.EW)
-        path_entry = ttk.Entry(entry_frame, textvariable=self.__path_textvariable, width=100)
-        path_entry.grid(row=1, column=1, padx=10, pady=5, sticky=tk.EW)
+        path_label.grid(row=2, column=0, padx=10, pady=5, sticky=tk.EW)
+        path_entry = ttk.Entry(entry_frame, textvariable=self.__path, width=100)
+        path_entry.grid(row=2, column=1, padx=10, pady=5, sticky=tk.EW)
         browse_button = ttk.Button(entry_frame, text='Browse', command=self.__browse_path)
-        browse_button.grid(row=1, column=2, padx=10, pady=5, sticky=tk.EW)
+        browse_button.grid(row=2, column=2, padx=10, pady=5, sticky=tk.EW)
         self.__download_button = ttk.Button(entry_frame, text='Download', command=self.__download)
-        self.__download_button.grid(row=2, column=1, padx=5, pady=5)
+        self.__download_button.grid(row=3, column=1, padx=5, pady=5)
         download_button = ttk.Button(entry_frame, text='Support this project', command=lambda: webopen('https://ko-fi.com/gcerretani'))
-        download_button.grid(row=3, column=1, padx=5, pady=5)
+        download_button.grid(row=4, column=1, padx=5, pady=5)
 
     def __create_footer(self):
         footer_frame = ttk.Frame(self.__root)
@@ -126,7 +133,7 @@ class _Window:
     def __browse_path(self):
         selected_path = tkfile.askdirectory()
         if selected_path:
-            self.__path_textvariable.set(selected_path)
+            self.__path.set(selected_path)
 
     @contextmanager
     def __wait_flag(self):
@@ -137,10 +144,11 @@ class _Window:
             self.__root.wait_variable(variable)
 
     def __download(self):
-        url = self.__url_textvariable.get()
+        url = self.__url.get()
+        size = self.__size.get()
         if len(url) == 0:
             raise RuntimeError('Please enter a valid URL.')
-        path_value = self.__path_textvariable.get()
+        path_value = self.__path.get()
         if len(path_value) == 0:
             raise RuntimeError('Please enter a valid destination folder.')
         downloader = antenati.AntenatiDownloader(url, 0, None)
@@ -149,7 +157,7 @@ class _Window:
             def cmd():
                 with flag.set_at_exit():
                     progressbar = antenati.ProgressBar(pb.set_total, pb.update)
-                    return downloader.run(antenati.DEFAULT_N_THREADS, antenati.DEFAULT_N_CONNECTIONS, antenati.DEFAULT_WIDTH, progressbar)
+                    return downloader.run(antenati.DEFAULT_N_THREADS, size, progressbar)
             future = exc.submit(cmd)
         gallery_size = future.result()
         tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(gallery_size, True)}')

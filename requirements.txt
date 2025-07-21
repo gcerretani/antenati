@@ -1,6 +1,5 @@
 click==8.1.8
-certifi==2025.7.14
-urllib3==2.5.0
 python-slugify==8.0.4
 humanize==4.12.3
 tqdm==4.67.1
+requests==2.32.4

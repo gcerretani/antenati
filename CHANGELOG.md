@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.3] - 2025-07-21
+## [4.0] - 2025-07-27
 
 ### Changed
-- Adapted to recent changes in SAN server filters: retrieving images at maximum size is no longer possible; image width can now be set using the new `-w/--width` parameter, which defaults to 1000 px
-- Enhanced error handling: improved checks for error 403, which now commonly occurs when attempting to download images with invalid sizes
+- Updated implementation to comply with recent SAN server filter requirements:
+  - Full-resolution downloads are no longer supported; this may be revisited in future releases
+  - Users must now specify the maximum image size using the `-s/--size` option (default: 1000 px); requests for larger images will result in a 403 error
+  - Download logic now detects AWS WAF challenges and provides a clear error message, replacing the previous generic 202 error; no workaround is currently available
+  - Reduced default number of threads and connections to minimize server load
+  - Updated the user agent string to a modern value
+- Replaced the use of the `urllib3` Python module with the more flexible `requests` library
+- Removed the `-c/--nconn` parameter; connection management now relies on the defaults provided by the `requests` library
 
 ## [3.2] - 2025-07-14
 
