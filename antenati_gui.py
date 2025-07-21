@@ -149,7 +149,7 @@ class _Window:
             def cmd():
                 with flag.set_at_exit():
                     progressbar = antenati.ProgressBar(pb.set_total, pb.update)
-                    return downloader.run(antenati.DEFAULT_N_THREADS, antenati.DEFAULT_N_CONNECTIONS, progressbar)
+                    return downloader.run(antenati.DEFAULT_N_THREADS, antenati.DEFAULT_N_CONNECTIONS, antenati.DEFAULT_WIDTH, progressbar)
             future = exc.submit(cmd)
         gallery_size = future.result()
         tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(gallery_size, True)}')

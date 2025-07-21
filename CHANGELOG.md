@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3] - 2025-07-21
+
+### Changed
+- Adapted to recent changes in SAN server filters: retrieving images at maximum size is no longer possible; image width can now be set using the new `-w/--width` parameter, which defaults to 1000 px
+- Enhanced error handling: improved checks for error 403, which now commonly occurs when attempting to download images with invalid sizes
+
 ## [3.2] - 2025-07-14
 
 ### Fixed
