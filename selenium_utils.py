@@ -26,11 +26,13 @@ def get_page_with_selenium(url: str, wait_selector: str = None, headless: bool =
         if headers and 'Referer' in headers:
             driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {"headers": {"Referer": headers['Referer']}})
         driver.get(url)
-        if wait_selector:
-            # Wait for the element specified by the CSS selector to be present
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
-            WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, wait_selector)))
+        # Wait for the real page title to appear (not the challenge page)
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        WebDriverWait(driver, 30).until(EC.title_is("Portale Antenati"))
+        # Optionally, you can still check status code as before (but not strictly needed)
         return driver.page_source
+    except Exception as e:
+        raise e
     finally:
         driver.quit()
