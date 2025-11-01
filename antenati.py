@@ -115,6 +115,7 @@ class AntenatiDownloader:
         """Get IIIF manifest as JSON from Portale Antenati gallery page using Selenium if needed"""
         # Use Selenium to get the HTML content (handles JS and WAF challenges)
         html_content = get_page_with_selenium(self.url, headers=self.__http_headers())
+        print(html_content)
         html_lines = html_content.splitlines()
         manifest_line = next((line for line in html_lines if 'manifestId' in line), None)
         if not manifest_line:
