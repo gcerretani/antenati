@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [5.0] - 2025-11-01
+
+### Added
+- Restored support for full/resolution image size downloads
+
+### Changed
+- Default requested size is now `0` (maximum available size) instead of 1000 pixels; use `--size N` to limit size
+
+### Fixed
+- Graceful handling of server denials (403 or WAF challenge)
+
+
 ## [4.0] - 2025-07-27
 
 ### Changed

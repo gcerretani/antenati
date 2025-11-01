@@ -6,7 +6,7 @@ antenati.py: a tool to download data from the Portale Antenati
 __author__ = 'Giovanni Cerretani'
 __copyright__ = 'Copyright (c) 2022, Giovanni Cerretani'
 __license__ = 'MIT License'
-__version__ = '4.0'
+__version__ = '5.0'
 __contact__ = 'https://gcerretani.github.io/antenati/'
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
@@ -42,7 +42,7 @@ class ThreadError(Exception):
         self.label = label
 
 
-DEFAULT_SIZE: int = 1000
+DEFAULT_SIZE: int = 0
 DEFAULT_N_THREADS: int = 2
 
 
@@ -68,7 +68,7 @@ class AntenatiDownloader:
         self.gallery_length = len(self.canvases)
 
     @staticmethod
-    def __http_headers() -> dict[str, Any]:
+    def __http_headers():
         """Generate HTTP headers to improve speed and to behave as a browser"""
         # SAN server return 403 if HTTP headers are not properly set.
         # - User-Agent: required
@@ -106,7 +106,7 @@ class AntenatiDownloader:
         http_reply = self.session.get(url)
         http_reply.raise_for_status()
         if http_reply.status_code == 202 and http_reply.headers.get('x-amzn-waf-action') == 'challenge':
-            raise RuntimeError(f'{http_reply.url}: AWS WAF challenge cannot be bypassed.')
+            raise RuntimeError(f'{http_reply.url}: AWS WAF challenge cannot be bypassed. See https://github.com/gcerretani/antenati/issues/25 for details.')
         return http_reply
 
     def __get_iiif_manifest(self) -> dict[str, Any]:
@@ -161,16 +161,25 @@ class AntenatiDownloader:
         else:
             mkdir(self.dirname)
 
+    @staticmethod
+    def __manipulate_url(url: str, size: int) -> str:
+        """Get full size string for IIIF request"""
+        # SAN server return 403 on certain IIIF requests:
+        # - /full/full/0/ (full image, deprecated)
+        # - /full/max/0/ (max size based on height and width declared in IIIF manifest)
+        # We use an alternative that seems to work, as of today.
+        if size > 0:
+            size_str = f'/full/!{size},{size}/0/'
+        else:
+            size_str = '/full/pct:100/0/'
+        return url.replace('/full/full/0/', size_str)
+
     def __thread_main(self, canvas: dict[str, Any], size: int) -> int:
         """Main function for each thread"""
         label = slugify(canvas['label'])
         try:
-            url: str = canvas['images'][0]['resource']['@id']
-            # SAN server return 403 on certain IIIF requests:
-            # - full/full/0/ (full image, deprecated)
-            # - full/max/0/ (max size based on height and width declared in IIIF manifest)
-            # As a workaround, we specify a fixed size.
-            url = url.replace('/full/0/', f'/!{size},{size}/0/')
+            manifest_url: str = canvas['images'][0]['resource']['@id']
+            url = self.__manipulate_url(manifest_url, size)
             http_reply = self.__get(url)
             content_type = self.__get_content_type(http_reply)
             extension = guess_extension(content_type)
@@ -226,7 +235,7 @@ def main() -> None:
         formatter_class=ArgumentDefaultsHelpFormatter
     )
     parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
-    parser.add_argument('-s', '--size', type=int, help='image size in pixel', default=DEFAULT_SIZE)
+    parser.add_argument('-s', '--size', type=int, help='image size in pixel (0 means full size)', default=DEFAULT_SIZE)
     parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=DEFAULT_N_THREADS)
     parser.add_argument('-f', '--first', type=int, help='first image to download', default=0)
     parser.add_argument('-l', '--last', type=int, help='first image NOT to download', default=None)

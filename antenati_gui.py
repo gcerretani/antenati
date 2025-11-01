@@ -97,7 +97,7 @@ class _Window:
         url_label.grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
         url_entry = ttk.Entry(entry_frame, textvariable=self.__url, width=100)
         url_entry.grid(row=0, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
-        size_label = tk.Label(entry_frame, text='Size (in pixels)')
+        size_label = tk.Label(entry_frame, text='Size (in pixels, 0 for maximum)')
         size_label.grid(row=1, column=0, padx=10, pady=5, sticky=tk.W)
         size_entry = ttk.Spinbox(entry_frame, textvariable=self.__size, width=100, from_=0, to=5000, increment=100)
         size_entry.grid(row=1, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
