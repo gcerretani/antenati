@@ -28,6 +28,8 @@ from requests.utils import default_headers
 from slugify import slugify
 from tqdm import tqdm
 
+from selenium_utils import get_page_with_selenium
+
 
 @dataclass
 class ProgressBar:
@@ -110,17 +112,18 @@ class AntenatiDownloader:
         return http_reply
 
     def __get_iiif_manifest(self) -> dict[str, Any]:
-        """Get IIIF manifest as JSON from Portale Antenati gallery page"""
-        http_reply = self.__get(self.url)
-        charset = self.__get_content_charset(http_reply)
-        html_content = http_reply.content.decode(charset).splitlines()
-        manifest_line = next((line for line in html_content if 'manifestId' in line), None)
+        """Get IIIF manifest as JSON from Portale Antenati gallery page using Selenium if needed"""
+        # Use Selenium to get the HTML content (handles JS and WAF challenges)
+        html_content = get_page_with_selenium(self.url, headers=self.__http_headers())
+        html_lines = html_content.splitlines()
+        manifest_line = next((line for line in html_lines if 'manifestId' in line), None)
         if not manifest_line:
             raise RuntimeError(f'No IIIF manifest found at {self.url}')
-        manifest_url_pattern = search(r'\'([A-Za-z0-9.:/-]*)\'', manifest_line)
+        manifest_url_pattern = search(r"'([A-Za-z0-9.:/-]*)'", manifest_line)
         if not manifest_url_pattern:
             raise RuntimeError(f'Invalid IIIF manifest line found at {self.url}')
         manifest_url = manifest_url_pattern.group(1)
+        # Download the manifest JSON as before (using requests)
         http_reply = self.__get(manifest_url)
         charset = self.__get_content_charset(http_reply)
         return loads(http_reply.content.decode(charset))
