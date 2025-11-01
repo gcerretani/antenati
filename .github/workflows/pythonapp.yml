@@ -28,4 +28,4 @@ jobs:
 
     - name: Download test
       run: |
-        python antenati.py "https://www.antenati.san.beniculturali.it/ark:/12657/an_ua19944535/w9DWR8x"
+        python antenati.py "https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x"
