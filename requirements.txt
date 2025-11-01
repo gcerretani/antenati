@@ -3,3 +3,4 @@ python-slugify~=8.0.4
 humanize~=4.14.0
 tqdm~=4.67.1
 requests~=2.32.5
+selenium~=4.38.0

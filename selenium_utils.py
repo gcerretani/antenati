@@ -1,8 +1,6 @@
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
 def get_page_with_selenium(url: str, wait_selector: str = None, headless: bool = True, headers: dict = None) -> str:
     """
@@ -23,7 +21,7 @@ def get_page_with_selenium(url: str, wait_selector: str = None, headless: bool =
         if 'User-Agent' in headers:
             chrome_options.add_argument(f"--user-agent={headers['User-Agent']}")
         # Referer and others can be set via CDP after driver creation
-    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
+    driver = webdriver.Chrome(options=chrome_options)
     try:
         if headers and 'Referer' in headers:
             driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {"headers": {"Referer": headers['Referer']}})
