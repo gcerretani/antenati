@@ -114,7 +114,7 @@ class AntenatiDownloader:
     def __get_iiif_manifest(self) -> dict[str, Any]:
         """Get IIIF manifest as JSON from Portale Antenati gallery page using Selenium if needed"""
         # Use Selenium to get the HTML content (handles JS and WAF challenges)
-        html_content = get_page_with_selenium(self.url, headers=self.__http_headers())
+        html_content = get_page_with_selenium(self.url, self.__http_headers())
         html_lines = html_content.splitlines()
         manifest_line = next((line for line in html_lines if 'manifestId' in line), None)
         if not manifest_line:
@@ -147,14 +147,14 @@ class AntenatiDownloader:
         for i in self.manifest['metadata']:
             label = i['label']
             value = i['value']
-            print(f'{label:<25}{value}')
-        print(f'{self.gallery_length} images found.')
+            echo(f'{label:<25}{value}')
+        echo(f'{self.gallery_length} images found.')
 
     def check_dir(self, parentdir: Optional[str] = None, interactive = True) -> None:
         """Check if directory already exists and chdir to it"""
         if parentdir is not None:
             self.dirname = Path(parentdir) / self.dirname
-        print(f'Output directory: {self.dirname}')
+        echo(f'Output directory: {self.dirname}')
         if path.exists(self.dirname):
             msg = f'Directory {self.dirname} already exists.'
             if not interactive:
@@ -258,7 +258,7 @@ def main() -> None:
     gallery_size = downloader.run_cli(args.nthreads, args.size)
 
     # Print summary
-    print(f'Done. Total size: {naturalsize(gallery_size, True)}')
+    echo(f'Done. Total size: {naturalsize(gallery_size, True)}')
 
 
 if __name__ == '__main__':
