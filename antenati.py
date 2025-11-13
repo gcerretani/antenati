@@ -25,10 +25,11 @@ from click import confirm, echo
 from humanize import naturalsize
 from requests import Response, Session
 from requests.utils import default_headers
+from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from slugify import slugify
 from tqdm import tqdm
-
-from selenium_utils import get_page_with_selenium
 
 
 @dataclass
@@ -53,16 +54,18 @@ class AntenatiDownloader:
 
     url: str
     session: Session
+    use_selenium: bool
     archive_id: str
     manifest: dict[str, Any]
     canvases: list[dict[str, Any]]
     dirname: Path
     gallery_length: int
 
-    def __init__(self, url: str, first: int, last: int):
+    def __init__(self, url: str, first: int, last: int, use_selenium: bool):
         self.url = url
         self.session = Session()
         self.session.headers = self.__http_headers()
+        self.use_selenium = use_selenium
         self.archive_id = self.__get_archive_id()
         self.manifest = self.__get_iiif_manifest()
         self.canvases = self.manifest['sequences'][0]['canvases'][first:last]
@@ -110,11 +113,26 @@ class AntenatiDownloader:
         if http_reply.status_code == 202 and http_reply.headers.get('x-amzn-waf-action') == 'challenge':
             raise RuntimeError(f'{http_reply.url}: AWS WAF challenge cannot be bypassed. See https://github.com/gcerretani/antenati/issues/25 for details.')
         return http_reply
+    
+    def __get_webpage(self) -> str:
+        """Get webpage content from URL using Selenium if needed"""
+        if self.use_selenium:
+            driver = webdriver.Chrome()
+            try:
+                driver.get(self.url)
+                # Wait for the real page title to appear (not the challenge page)
+                WebDriverWait(driver, 30).until(EC.title_is('Portale Antenati'))
+                return driver.page_source
+            finally:
+                driver.quit()
+        http_reply = self.__get(self.url)
+        charset = self.__get_content_charset(http_reply)
+        return http_reply.content.decode(charset)
 
     def __get_iiif_manifest(self) -> dict[str, Any]:
         """Get IIIF manifest as JSON from Portale Antenati gallery page using Selenium if needed"""
         # Use Selenium to get the HTML content (handles JS and WAF challenges)
-        html_content = get_page_with_selenium(self.url, self.__http_headers())
+        html_content = self.__get_webpage()
         html_lines = html_content.splitlines()
         manifest_line = next((line for line in html_lines if 'manifestId' in line), None)
         if not manifest_line:
@@ -242,11 +260,12 @@ def main() -> None:
     parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=DEFAULT_N_THREADS)
     parser.add_argument('-f', '--first', type=int, help='first image to download', default=0)
     parser.add_argument('-l', '--last', type=int, help='first image NOT to download', default=None)
+    parser.add_argument('-S', '--selenium', action='store_true', help='use Selenium to fetch pages')
     parser.add_argument('-v', '--version', action='version', version=__version__)
     args = parser.parse_args()
 
     # Initialize
-    downloader = AntenatiDownloader(args.url, args.first, args.last)
+    downloader = AntenatiDownloader(args.url, args.first, args.last, args.selenium)
 
     # Print gallery info
     downloader.print_gallery_info()
