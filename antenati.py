@@ -27,7 +27,7 @@ from requests import Response, Session
 from requests.utils import default_headers
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.expected_conditions import title_is
 from slugify import slugify
 from tqdm import tqdm
 
@@ -117,14 +117,11 @@ class AntenatiDownloader:
     def __get_webpage(self) -> str:
         """Get webpage content from URL using Selenium if needed"""
         if self.use_selenium:
-            driver = webdriver.Chrome()
-            try:
+            with webdriver.Chrome() as driver:
                 driver.get(self.url)
                 # Wait for the real page title to appear (not the challenge page)
-                WebDriverWait(driver, 30).until(EC.title_is('Portale Antenati'))
+                WebDriverWait(driver, 30).until(title_is('Portale Antenati'))
                 return driver.page_source
-            finally:
-                driver.quit()
         http_reply = self.__get(self.url)
         charset = self.__get_content_charset(http_reply)
         return http_reply.content.decode(charset)
