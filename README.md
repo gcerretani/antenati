@@ -14,7 +14,7 @@ In the website, navigate to the archive you want to download. For example, for t
 
 [https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x](https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x)
 
-Copy the link to the first page, and paste it in the Archive URL field of the window. Then, specify a destination folder: the results will be placed there, in a new subfolder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
+Copy the link to the first page, and paste it in the Archive URL field of the window. Alternatively, you can provide the manifest URL directly (e.g., `https://dam-antenati.cultura.gov.it/antenati/containers/0ADVMr3/manifest`). Then, specify a destination folder: the results will be placed there, in a new subfolder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
 
 ## CLI version
 
@@ -46,5 +46,9 @@ In the website, navigate to the archive you want to download. For example, for t
 Then, copy the link to the first page, and call the script with that link as argument:
 
     python3 antenati.py https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
+
+Alternatively, you can provide the manifest URL directly:
+
+    python3 antenati.py https://dam-antenati.cultura.gov.it/antenati/containers/0ADVMr3/manifest
 
 The results will be placed in a folder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.

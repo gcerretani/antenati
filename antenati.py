@@ -55,9 +55,10 @@ class AntenatiDownloader:
     url: str
     session: Session
     use_selenium: bool
-    archive_id: str
+    manifest_url: str
     manifest: dict[str, Any]
     canvases: list[dict[str, Any]]
+    archive_id: str
     dirname: Path
     gallery_length: int
 
@@ -66,9 +67,10 @@ class AntenatiDownloader:
         self.session = Session()
         self.session.headers = self.__http_headers()
         self.use_selenium = use_selenium
-        self.archive_id = self.__get_archive_id()
+        self.manifest_url = self.__get_manifest_url()
         self.manifest = self.__get_iiif_manifest()
         self.canvases = self.manifest['sequences'][0]['canvases'][first:last]
+        self.archive_id = self.__get_archive_id()
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
 
@@ -87,7 +89,10 @@ class AntenatiDownloader:
 
     def __get_archive_id(self) -> str:
         """Get numeric archive ID from the URL"""
-        archive_id_pattern = findall(r'(\d+)', self.url)
+        # Get URL of first canvas, it is the only place the archive ID is present
+        # in the manifest. Useful when user provides a manifest URL directly.
+        canonical_url = self.canvases[0]['@id']
+        archive_id_pattern = findall(r'(\d+)', canonical_url)
         if len(archive_id_pattern) < 2:
             raise RuntimeError(f'Cannot get archive ID from {self.url}')
         return archive_id_pattern[1]
@@ -125,9 +130,12 @@ class AntenatiDownloader:
         http_reply = self.__get(self.url)
         charset = self.__get_content_charset(http_reply)
         return http_reply.content.decode(charset)
-
-    def __get_iiif_manifest(self) -> dict[str, Any]:
-        """Get IIIF manifest as JSON from Portale Antenati gallery page using Selenium if needed"""
+    
+    def __get_manifest_url(self) -> str:
+        """Get IIIF manifest URL from Portale Antenati gallery page using Selenium if needed"""
+        # If argument is a manifest URL, return it directly
+        if self.url.endswith('/manifest'):
+            return self.url
         # Use Selenium to get the HTML content (handles JS and WAF challenges)
         html_content = self.__get_webpage()
         html_lines = html_content.splitlines()
@@ -137,9 +145,12 @@ class AntenatiDownloader:
         manifest_url_pattern = search(r"'([A-Za-z0-9.:/-]*)'", manifest_line)
         if not manifest_url_pattern:
             raise RuntimeError(f'Invalid IIIF manifest line found at {self.url}')
-        manifest_url = manifest_url_pattern.group(1)
+        return manifest_url_pattern.group(1)
+
+    def __get_iiif_manifest(self) -> dict[str, Any]:
+        """Get IIIF manifest as JSON from Portale Antenati gallery page using Selenium if needed"""
         # Download the manifest JSON as before (using requests)
-        http_reply = self.__get(manifest_url)
+        http_reply = self.__get(self.manifest_url)
         charset = self.__get_content_charset(http_reply)
         return loads(http_reply.content.decode(charset))
 
@@ -252,7 +263,7 @@ def main() -> None:
         epilog=__copyright__,
         formatter_class=ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
+    parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page or manifest URL')
     parser.add_argument('-s', '--size', type=int, help='image size in pixel (0 means full size)', default=DEFAULT_SIZE)
     parser.add_argument('-n', '--nthreads', type=int, help='max n. of threads', default=DEFAULT_N_THREADS)
     parser.add_argument('-f', '--first', type=int, help='first image to download', default=0)
