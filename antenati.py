@@ -22,6 +22,7 @@ from re import findall, search
 from typing import Any, Optional
 
 from click import confirm, echo
+from click.exceptions import Abort
 from humanize import naturalsize
 from requests import Response, Session
 from requests.utils import default_headers
@@ -249,7 +250,11 @@ def main() -> None:
     downloader.print_gallery_info()
 
     # Check if directory already exists and chdir to it
-    downloader.check_dir()
+    try:
+        downloader.check_dir()
+    except Abort:
+        import sys
+        sys.exit(1)
 
     # Run
     gallery_size = downloader.run_cli(args.nthreads, args.size)
