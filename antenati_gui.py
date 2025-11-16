@@ -151,7 +151,7 @@ class _Window:
         path_value = self.__path.get()
         if len(path_value) == 0:
             raise RuntimeError('Please enter a valid destination folder.')
-        downloader = antenati.AntenatiDownloader(url, 0, None)
+        downloader = antenati.AntenatiDownloader(url, 0, None, True)
         downloader.check_dir(path_value, False)
         with ThreadPoolExecutor(max_workers=1) as exc, self.__progress_bar_setter() as pb, self.__in_progress(), self.__wait_flag() as flag:
             def cmd():
