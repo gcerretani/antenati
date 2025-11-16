@@ -19,10 +19,10 @@ from mimetypes import guess_extension
 from os import mkdir, path
 from pathlib import Path
 from re import findall, search
+from sys import exit
 from typing import Any, Optional
 
 from click import confirm, echo
-from click.exceptions import Abort
 from humanize import naturalsize
 from requests import Response, Session
 from requests.utils import default_headers
@@ -158,7 +158,8 @@ class AntenatiDownloader:
             if not interactive:
                 raise RuntimeError(msg)
             echo(msg)
-            confirm('Do you want to proceed?', abort=True)
+            if not confirm('Do you want to proceed?'):
+                exit(1)
         else:
             mkdir(self.dirname)
 
@@ -250,11 +251,7 @@ def main() -> None:
     downloader.print_gallery_info()
 
     # Check if directory already exists and chdir to it
-    try:
-        downloader.check_dir()
-    except Abort:
-        import sys
-        sys.exit(1)
+    downloader.check_dir()
 
     # Run
     gallery_size = downloader.run_cli(args.nthreads, args.size)
