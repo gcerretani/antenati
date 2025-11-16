@@ -19,6 +19,7 @@ from mimetypes import guess_extension
 from os import mkdir, path
 from pathlib import Path
 from re import findall, search
+from sys import exit
 from typing import Any, Optional
 
 from click import confirm, echo
@@ -186,7 +187,8 @@ class AntenatiDownloader:
             if not interactive:
                 raise RuntimeError(msg)
             echo(msg)
-            confirm('Do you want to proceed?', abort=True)
+            if not confirm('Do you want to proceed?'):
+                exit(1)
         else:
             mkdir(self.dirname)
 
