@@ -75,6 +75,8 @@ class _Window:
         # Create variables
         self.__url = tk.StringVar()
         self.__size = tk.IntVar(value=antenati.DEFAULT_SIZE)
+        self.__first = tk.IntVar(value=0)
+        self.__last = tk.StringVar(value='')
         self.__path = tk.StringVar()
 
         # Populate entries
@@ -96,21 +98,48 @@ class _Window:
         url_label = tk.Label(entry_frame, text='Archive URL')
         url_label.grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
         url_entry = ttk.Entry(entry_frame, textvariable=self.__url, width=100)
-        url_entry.grid(row=0, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
-        size_label = tk.Label(entry_frame, text='Size (in pixels, 0 for maximum)')
-        size_label.grid(row=1, column=0, padx=10, pady=5, sticky=tk.W)
-        size_entry = ttk.Spinbox(entry_frame, textvariable=self.__size, width=100, from_=0, to=5000, increment=100)
-        size_entry.grid(row=1, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
+        url_entry.grid(row=0, column=1, padx=10, pady=5, columnspan=3, sticky=tk.EW)
+        # Options section (separate, labeled)
+        options_frame = ttk.LabelFrame(entry_frame, text='Options')
+        options_frame.grid(row=1, column=0, columnspan=4, padx=10, pady=5, sticky=tk.EW)
+
+        # Size option (row 0)
+        size_label = tk.Label(options_frame, text='Size (px):')
+        size_label.grid(row=0, column=0, sticky=tk.W, padx=6, pady=2)
+        size_entry = ttk.Spinbox(options_frame, textvariable=self.__size, width=10, from_=0, to=5000, increment=100)
+        size_entry.grid(row=0, column=1, sticky=tk.W, padx=6, pady=2)
+        size_desc = tk.Label(options_frame, text='Maximum image size in pixels (0 = full size)')
+        size_desc.grid(row=0, column=2, sticky=tk.W, padx=6, pady=2)
+
+        # First option (row 1)
+        first_label = tk.Label(options_frame, text='First:')
+        first_label.grid(row=1, column=0, sticky=tk.W, padx=6, pady=2)
+        first_entry = ttk.Spinbox(options_frame, textvariable=self.__first, width=10, from_=0, to=100000, increment=1)
+        first_entry.grid(row=1, column=1, sticky=tk.W, padx=6, pady=2)
+        first_desc = tk.Label(options_frame, text='Index (0-based) of the first image to download')
+        first_desc.grid(row=1, column=2, sticky=tk.W, padx=6, pady=2)
+
+        # Last option (row 2)
+        last_label = tk.Label(options_frame, text='Last (exclusive):')
+        last_label.grid(row=2, column=0, sticky=tk.W, padx=6, pady=2)
+        last_entry = ttk.Entry(options_frame, textvariable=self.__last, width=10)
+        last_entry.grid(row=2, column=1, sticky=tk.W, padx=6, pady=2)
+        last_desc = tk.Label(options_frame, text='Index NOT to download; leave empty to download all')
+        last_desc.grid(row=2, column=2, sticky=tk.W, padx=6, pady=2)
+
+        # Destination folder (below Options)
         path_label = tk.Label(entry_frame, text='Destination folder')
         path_label.grid(row=2, column=0, padx=10, pady=5, sticky=tk.EW)
         path_entry = ttk.Entry(entry_frame, textvariable=self.__path, width=100)
-        path_entry.grid(row=2, column=1, padx=10, pady=5, sticky=tk.EW)
+        path_entry.grid(row=2, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
         browse_button = ttk.Button(entry_frame, text='Browse', command=self.__browse_path)
-        browse_button.grid(row=2, column=2, padx=10, pady=5, sticky=tk.EW)
+        browse_button.grid(row=2, column=3, padx=10, pady=5, sticky=tk.EW)
+
+        # Action buttons
         self.__download_button = ttk.Button(entry_frame, text='Download', command=self.__download)
         self.__download_button.grid(row=3, column=1, padx=5, pady=5)
         download_button = ttk.Button(entry_frame, text='Support this project', command=lambda: webopen('https://ko-fi.com/gcerretani'))
-        download_button.grid(row=4, column=1, padx=5, pady=5)
+        download_button.grid(row=3, column=2, padx=5, pady=5)
 
     def __create_footer(self):
         footer_frame = ttk.Frame(self.__root)
@@ -151,7 +180,12 @@ class _Window:
         path_value = self.__path.get()
         if len(path_value) == 0:
             raise RuntimeError('Please enter a valid destination folder.')
-        downloader = antenati.AntenatiDownloader(url, 0, None)
+        # Prepare first/last values
+        first_val = int(self.__first.get()) if self.__first.get() is not None else 0
+        last_raw = self.__last.get().strip()
+        last_val = int(last_raw) if last_raw != '' else None
+
+        downloader = antenati.AntenatiDownloader(url, first_val, last_val)
         downloader.check_dir(path_value, False)
         with ThreadPoolExecutor(max_workers=1) as exc, self.__progress_bar_setter() as pb, self.__in_progress(), self.__wait_flag() as flag:
             def cmd():
