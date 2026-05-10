@@ -1,0 +1,57 @@
+# NOTE: This is a tooling-only pyproject.toml. The [project] table will be
+# added in a later step together with the move to a src/ layout and the
+# switch to hatchling + hatch-vcs for dynamic versioning. For now, the
+# package is still distributed as standalone scripts and PyInstaller
+# binaries, so we only configure dev tools here.
+
+[tool.ruff]
+line-length = 160
+target-version = "py39"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+# Conservative starting set: enabled rules already pass on the current
+# codebase. Stricter rules (PTH, ANN, D, etc.) will be turned on as the
+# refactor lands and the affected code is rewritten.
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "RET", "TID"]
+ignore = [
+    # Allow `Optional[...]` / `Union[...]` while still on Python 3.9.
+    "UP007",
+    "UP045",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Legacy single-file modules: relax style-only rules until they are split
+# into the new package layout in the refactor PRs. Real lint issues are
+# still enforced.
+"antenati.py" = ["UP034", "SIM108", "RET504"]
+"antenati_gui.py" = ["I001"]
+
+[tool.ruff.format]
+quote-style = "single"
+# Legacy single-file modules will be reformatted in a dedicated PR once
+# they are split into the new package layout, to keep the diff for each
+# refactor PR readable.
+exclude = ["antenati.py", "antenati_gui.py"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unreachable = true
+check_untyped_defs = true
+
+# Legacy single-file modules: keep mypy importing them without enforcing
+# strict checks until they are split into the new package layout. Strict
+# mode will then be enabled module-by-module in the refactor PRs.
+[[tool.mypy.overrides]]
+module = ["antenati", "antenati_gui"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: tests that hit the live Portale Antenati (opt-in, slow, may flake)",
+]

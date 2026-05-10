@@ -1,10 +1,41 @@
 name: Python application
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
+  lint:
+    name: Lint & offline tests
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install ruff==0.15.8 mypy==1.19.1 pytest==9.0.3 types-requests
+
+    - name: Ruff check
+      run: ruff check .
+
+    - name: Ruff format check
+      run: ruff format --check .
+
+    - name: Mypy
+      run: mypy antenati.py antenati_gui.py
+
+    - name: Pytest (offline only)
+      run: pytest -m "not integration"
+
   test:
-    name: Test
+    name: Live download
+    needs: lint
 
     strategy:
       matrix:
