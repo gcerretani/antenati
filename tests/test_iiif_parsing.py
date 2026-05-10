@@ -1,8 +1,8 @@
 """Tests for the IIIF gallery parsing path.
 
-Covers ``__get_archive_id``, ``__get_iiif_manifest`` (including the manifest
-URL regex on the gallery HTML), ``__get_content_type`` /
-``__get_content_charset``, and the AWS WAF challenge detection in ``__get``.
+Exercises both the pure helpers in :mod:`antenati_iiif` /
+:mod:`antenati_http` and the orchestration in
+:class:`antenati.AntenatiDownloader`.
 """
 
 from __future__ import annotations
@@ -12,21 +12,26 @@ import responses
 from requests import Session
 
 import antenati
+import antenati_http
+import antenati_iiif
 from antenati import AntenatiDownloader
 from tests.conftest import ARCHIVE_ID, GALLERY_URL, MANIFEST_URL
-
-# Reach into the name-mangled private methods. These will become public
-# pure functions in the upcoming refactor (PR-3); the indirection is
-# intentionally ugly so the rename is impossible to miss.
-_get_content_type = AntenatiDownloader._AntenatiDownloader__get_content_type  # type: ignore[attr-defined]
-_get_content_charset = AntenatiDownloader._AntenatiDownloader__get_content_charset  # type: ignore[attr-defined]
 
 
 def test_archive_id_is_extracted_from_url(downloader: AntenatiDownloader) -> None:
     assert downloader.archive_id == ARCHIVE_ID
 
 
-def test_archive_id_raises_when_url_lacks_two_numbers(mocked_http) -> None:
+def test_archive_id_helper_returns_second_integer() -> None:
+    assert antenati_iiif.get_archive_id_from_url(GALLERY_URL) == ARCHIVE_ID
+
+
+def test_archive_id_helper_raises_when_url_lacks_two_numbers() -> None:
+    with pytest.raises(RuntimeError, match='Cannot get archive ID'):
+        antenati_iiif.get_archive_id_from_url('https://antenati.cultura.gov.it/no-numbers/')
+
+
+def test_constructor_raises_when_url_lacks_two_numbers(mocked_http) -> None:
     with pytest.raises(RuntimeError, match='Cannot get archive ID'):
         AntenatiDownloader('https://antenati.cultura.gov.it/no-numbers/', 0, None)
 
@@ -51,7 +56,17 @@ def test_first_last_full_range(mocked_http) -> None:
     assert dl.gallery_length == 3
 
 
-def test_no_manifest_line_raises(gallery_html: str) -> None:
+def test_parse_manifest_url_from_html_extracts_quoted_url() -> None:
+    html = "<script>var manifestId = 'https://example.org/m';</script>"
+    assert antenati_iiif.parse_manifest_url_from_html(html, 'src') == 'https://example.org/m'
+
+
+def test_parse_manifest_url_no_keyword_raises() -> None:
+    with pytest.raises(RuntimeError, match='No IIIF manifest found'):
+        antenati_iiif.parse_manifest_url_from_html('<html>nothing here</html>', 'src')
+
+
+def test_constructor_raises_when_html_lacks_manifest(gallery_html: str) -> None:
     bad_html = '<html><body>no manifest here</body></html>'
     with responses.RequestsMock() as rsps:
         rsps.add(
@@ -65,11 +80,10 @@ def test_no_manifest_line_raises(gallery_html: str) -> None:
             AntenatiDownloader(GALLERY_URL, 0, None)
 
 
-def test_invalid_manifest_line_raises() -> None:
-    # Has the keyword but no quoted URL: the regex still matches an empty
-    # group, exposing the fragility the refactor will address. For now we
-    # lock in the *current* behaviour so refactoring can't silently change
-    # it.
+def test_constructor_raises_on_invalid_manifest_line() -> None:
+    # Locks in the *current* (fragile) behaviour: ``manifestId`` keyword
+    # present but no quoted URL eventually raises. The exact exception type
+    # will become more specific in a later hardening PR.
     bad_html = '<script>var manifestId = noQuotesHere;</script>'
     with responses.RequestsMock() as rsps:
         rsps.add(
@@ -89,8 +103,8 @@ def test_waf_challenge_is_detected() -> None:
             responses.GET,
             GALLERY_URL,
             body='challenge',
-            status=202,
-            headers={'x-amzn-waf-action': 'challenge'},
+            status=antenati_http.WAF_CHALLENGE_STATUS,
+            headers={antenati_http.WAF_CHALLENGE_HEADER: antenati_http.WAF_CHALLENGE_VALUE},
             content_type='text/html; charset=utf-8',
         )
         with pytest.raises(RuntimeError, match='AWS WAF challenge'):
@@ -108,7 +122,7 @@ def test_get_content_type_strips_parameters() -> None:
             content_type='text/html; charset=utf-8',
         )
         reply = session.get('https://example.org/x')
-    assert _get_content_type(reply) == 'text/html'
+    assert antenati_http.get_content_type(reply) == 'text/html'
 
 
 def test_get_content_charset() -> None:
@@ -122,7 +136,7 @@ def test_get_content_charset() -> None:
             content_type='application/json; charset=utf-8',
         )
         reply = session.get('https://example.org/x')
-    assert _get_content_charset(reply) == 'utf-8'
+    assert antenati_http.get_content_charset(reply) == 'utf-8'
 
 
 def test_default_thread_count_constant() -> None:

@@ -13,21 +13,21 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from email.message import Message
 from json import loads
 from mimetypes import guess_extension
 from os import mkdir, path
 from pathlib import Path
-from re import findall, search
 from sys import exit
 from typing import Any, Optional
 
 from click import confirm, echo
 from humanize import naturalsize
-from requests import Response, Session
-from requests.utils import default_headers
+from requests import Session
 from slugify import slugify
 from tqdm import tqdm
+
+import antenati_http
+import antenati_iiif
 
 
 @dataclass
@@ -60,84 +60,28 @@ class AntenatiDownloader:
 
     def __init__(self, url: str, first: int, last: int):
         self.url = url
-        self.session = Session()
-        self.session.headers = self.__http_headers()
-        self.archive_id = self.__get_archive_id()
-        self.manifest = self.__get_iiif_manifest()
-        self.canvases = self.manifest['sequences'][0]['canvases'][first:last]
+        self.session = antenati_http.build_session()
+        self.archive_id = antenati_iiif.get_archive_id_from_url(url)
+        self.manifest = self.__load_manifest()
+        self.canvases = antenati_iiif.slice_canvases(self.manifest, first, last)
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
 
-    @staticmethod
-    def __http_headers():
-        """Generate HTTP headers to improve speed and to behave as a browser"""
-        # SAN server return 403 if HTTP headers are not properly set.
-        # - User-Agent: required
-        # - Referer: required
-        # - Origin: not required
-        # Other headers are set to improve performance.
-        headers = default_headers()
-        headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
-        headers['Referer'] = 'https://antenati.cultura.gov.it/'
-        return headers
-
-    def __get_archive_id(self) -> str:
-        """Get numeric archive ID from the URL"""
-        archive_id_pattern = findall(r'(\d+)', self.url)
-        if len(archive_id_pattern) < 2:
-            raise RuntimeError(f'Cannot get archive ID from {self.url}')
-        return archive_id_pattern[1]
-
-    @staticmethod
-    def __get_content_type(http_reply: Response) -> str:
-        """Decode Content-Type header using email module."""
-        msg = Message()
-        msg['Content-Type'] = http_reply.headers['Content-Type']
-        return msg.get_content_type()
-
-    @staticmethod
-    def __get_content_charset(http_reply: Response):
-        """Decode Content-Type header using email module."""
-        msg = Message()
-        msg['Content-Type'] = http_reply.headers['Content-Type']
-        return msg.get_content_charset()
-
-    def __get(self, url: str) -> Response:
-        """Get HTTP reply from URL"""
-        http_reply = self.session.get(url)
-        http_reply.raise_for_status()
-        if http_reply.status_code == 202 and http_reply.headers.get('x-amzn-waf-action') == 'challenge':
-            raise RuntimeError(f'{http_reply.url}: AWS WAF challenge cannot be bypassed. See https://github.com/gcerretani/antenati/issues/25 for details.')
-        return http_reply
-
-    def __get_iiif_manifest(self) -> dict[str, Any]:
-        """Get IIIF manifest as JSON from Portale Antenati gallery page"""
-        http_reply = self.__get(self.url)
-        charset = self.__get_content_charset(http_reply)
-        html_content = http_reply.content.decode(charset).splitlines()
-        manifest_line = next((line for line in html_content if 'manifestId' in line), None)
-        if not manifest_line:
-            raise RuntimeError(f'No IIIF manifest found at {self.url}')
-        manifest_url_pattern = search(r'\'([A-Za-z0-9.:/-]*)\'', manifest_line)
-        if not manifest_url_pattern:
-            raise RuntimeError(f'Invalid IIIF manifest line found at {self.url}')
-        manifest_url = manifest_url_pattern.group(1)
-        http_reply = self.__get(manifest_url)
-        charset = self.__get_content_charset(http_reply)
-        return loads(http_reply.content.decode(charset))
-
-    def __get_metadata_content(self, label: str) -> str:
-        """Get metadata content of IIIF manifest given its label"""
-        try:
-            return next((i['value'] for i in self.manifest['metadata'] if i['label'] == label))
-        except StopIteration as exc:
-            raise RuntimeError(f'Cannot get {label} from manifest') from exc
+    def __load_manifest(self) -> dict[str, Any]:
+        """Fetch the gallery page, extract the manifest URL, and load it as JSON."""
+        gallery_reply = antenati_http.fetch(self.session, self.url)
+        gallery_charset = antenati_http.get_content_charset(gallery_reply)
+        gallery_html = gallery_reply.content.decode(gallery_charset)
+        manifest_url = antenati_iiif.parse_manifest_url_from_html(gallery_html, self.url)
+        manifest_reply = antenati_http.fetch(self.session, manifest_url)
+        manifest_charset = antenati_http.get_content_charset(manifest_reply)
+        return loads(manifest_reply.content.decode(manifest_charset))
 
     def __generate_dirname(self) -> Path:
         """Generate directory name from info in IIIF manifest"""
-        context = self.__get_metadata_content('Contesto archivistico')
-        year = self.__get_metadata_content('Titolo')
-        typology = self.__get_metadata_content('Tipologia')
+        context = antenati_iiif.get_metadata_value(self.manifest, 'Contesto archivistico')
+        year = antenati_iiif.get_metadata_value(self.manifest, 'Titolo')
+        typology = antenati_iiif.get_metadata_value(self.manifest, 'Tipologia')
         return Path(slugify(f'{context}-{year}-{typology}-{self.archive_id}'))
 
     def print_gallery_info(self) -> None:
@@ -163,27 +107,14 @@ class AntenatiDownloader:
         else:
             mkdir(self.dirname)
 
-    @staticmethod
-    def __manipulate_url(url: str, size: int) -> str:
-        """Get full size string for IIIF request"""
-        # SAN server return 403 on certain IIIF requests:
-        # - /full/full/0/ (full image, deprecated)
-        # - /full/max/0/ (max size based on height and width declared in IIIF manifest)
-        # We use an alternative that seems to work, as of today.
-        if size > 0:
-            size_str = f'/full/!{size},{size}/0/'
-        else:
-            size_str = '/full/pct:100/0/'
-        return url.replace('/full/full/0/', size_str)
-
     def __thread_main(self, canvas: dict[str, Any], size: int) -> int:
         """Main function for each thread"""
         label = slugify(canvas['label'])
         try:
-            manifest_url: str = canvas['images'][0]['resource']['@id']
-            url = self.__manipulate_url(manifest_url, size)
-            http_reply = self.__get(url)
-            content_type = self.__get_content_type(http_reply)
+            image_url = antenati_iiif.image_url_for_canvas(canvas)
+            url = antenati_iiif.manipulate_image_url(image_url, size)
+            http_reply = antenati_http.fetch(self.session, url)
+            content_type = antenati_http.get_content_type(http_reply)
             extension = guess_extension(content_type)
             if not extension:
                 raise RuntimeError(f'{url}: Unable to guess extension "{content_type}"')

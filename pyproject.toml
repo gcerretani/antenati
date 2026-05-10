@@ -35,7 +35,11 @@ quote-style = "single"
 exclude = ["antenati.py", "antenati_gui.py"]
 
 [tool.mypy]
-python_version = "3.9"
+# mypy 1.19+ no longer supports type-checking against Python 3.9. The code
+# itself still targets py39 (see ruff's target-version) and is verified to
+# import on 3.9 in CI; type narrowing just gets analysed as if running on
+# 3.10. Bump this in sync with the runtime minimum if/when 3.9 is dropped.
+python_version = "3.10"
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unreachable = true
