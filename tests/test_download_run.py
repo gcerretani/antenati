@@ -1,0 +1,176 @@
+"""End-to-end tests for ``AntenatiDownloader.run`` with mocked HTTP.
+
+These tests are the main safety net: they exercise the full happy path
+(gallery -> manifest -> per-image download -> filesystem writes) and a few
+key failure modes so the upcoming refactor cannot regress them silently.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import responses
+
+import antenati
+from antenati import AntenatiDownloader, ProgressBar
+from tests.conftest import GALLERY_URL, TINY_JPEG
+
+
+def _null_progress() -> ProgressBar:
+    return ProgressBar(set_total=lambda _t: None, update=lambda: None)
+
+
+def _image_url(canvas_label: str, size: int) -> str:
+    """Mirror ``__manipulate_url`` for the IIIF URL each canvas will fetch."""
+    base = f'https://iiif.example.org/iiif/img{canvas_label[-1]}'
+    size_part = f'!{size},{size}' if size > 0 else 'pct:100'
+    return f'{base}/full/{size_part}/0/default.jpg'
+
+
+@pytest.fixture
+def downloader_in_tmp(downloader: AntenatiDownloader, tmp_path: Path) -> AntenatiDownloader:
+    downloader.check_dir(parentdir=str(tmp_path), interactive=False)
+    return downloader
+
+
+def test_run_downloads_all_images_full_size(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    total = downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+    assert total == 3 * len(TINY_JPEG)
+    files = sorted(p.name for p in downloader_in_tmp.dirname.iterdir())
+    assert files == ['0001.jpg', '0002.jpg', '0003.jpg']
+
+
+def test_run_uses_constrained_size_urls(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+    size = 1234
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, size),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    total = downloader_in_tmp.run(n_workers=2, size=size, progress=_null_progress())
+    assert total == 3 * len(TINY_JPEG)
+
+
+def test_run_partial_failure_raises_with_summary(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+    # First image succeeds, second 500s, third succeeds.
+    mocked_http.add(
+        responses.GET,
+        _image_url('0001', 0),
+        body=TINY_JPEG,
+        status=200,
+        content_type='image/jpeg',
+    )
+    mocked_http.add(
+        responses.GET,
+        _image_url('0002', 0),
+        body='boom',
+        status=500,
+        content_type='text/plain',
+    )
+    mocked_http.add(
+        responses.GET,
+        _image_url('0003', 0),
+        body=TINY_JPEG,
+        status=200,
+        content_type='image/jpeg',
+    )
+    with pytest.raises(RuntimeError, match=r'Failed to download 1 image'):
+        downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+
+
+def test_run_progress_callbacks_are_invoked(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    set_total_calls: list[int] = []
+    update_count = [0]
+
+    def _update() -> None:
+        update_count[0] += 1
+
+    progress = ProgressBar(set_total=set_total_calls.append, update=_update)
+    downloader_in_tmp.run(n_workers=2, size=0, progress=progress)
+    assert set_total_calls == [3]
+    assert update_count[0] == 3
+
+
+def test_run_filename_uses_image_extension(mocked_http, tmp_path: Path) -> None:
+    # Construct a downloader with a single canvas served as PNG so we can
+    # observe ``guess_extension`` picking up a different extension.
+    dl = AntenatiDownloader(GALLERY_URL, first=0, last=1)
+    dl.check_dir(parentdir=str(tmp_path), interactive=False)
+    mocked_http.add(
+        responses.GET,
+        _image_url('0001', 0),
+        body=TINY_JPEG,  # bytes are irrelevant, content-type drives extension
+        status=200,
+        content_type='image/png',
+    )
+    dl.run(n_workers=1, size=0, progress=_null_progress())
+    assert (dl.dirname / '0001.png').is_file()
+
+
+def test_run_with_first_last_range_downloads_subset(mocked_http, tmp_path: Path) -> None:
+    dl = AntenatiDownloader(GALLERY_URL, first=1, last=3)
+    dl.check_dir(parentdir=str(tmp_path), interactive=False)
+    for label in ('0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    dl.run(n_workers=2, size=0, progress=_null_progress())
+    files = sorted(p.name for p in dl.dirname.iterdir())
+    assert files == ['0002.jpg', '0003.jpg']
+
+
+def test_run_unknown_content_type_is_reported_as_failure(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+    # All three respond with a content-type ``guess_extension`` cannot map.
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='application/x-no-such-format',
+        )
+    with pytest.raises(RuntimeError, match=r'Failed to download 3 image'):
+        downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+
+
+def test_run_cli_uses_tqdm_progress_bar(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    total = downloader_in_tmp.run_cli(n_workers=2, size=0)
+    assert total == 3 * len(TINY_JPEG)
+
+
+def test_progress_bar_dataclass_shape() -> None:
+    bar = antenati.ProgressBar(set_total=lambda _t: None, update=lambda: None)
+    assert callable(bar.set_total)
+    assert callable(bar.update)

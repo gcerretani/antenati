@@ -1,0 +1,65 @@
+{
+  "@context": "http://iiif.io/api/presentation/2/context.json",
+  "@id": "https://iiif.example.org/ark/12657/iiif-19944535/manifest",
+  "@type": "sc:Manifest",
+  "label": "Test gallery",
+  "metadata": [
+    {"label": "Contesto archivistico", "value": "Stato civile italiano/Provincia di Test/Comune di Esempio"},
+    {"label": "Titolo", "value": "1900"},
+    {"label": "Tipologia", "value": "Nati"},
+    {"label": "Note", "value": "Test fixture, not real data"}
+  ],
+  "sequences": [
+    {
+      "@id": "https://iiif.example.org/ark/12657/iiif-19944535/sequence/normal",
+      "@type": "sc:Sequence",
+      "canvases": [
+        {
+          "@id": "https://iiif.example.org/ark/12657/iiif-19944535/canvas/p1",
+          "@type": "sc:Canvas",
+          "label": "0001",
+          "images": [
+            {
+              "@type": "oa:Annotation",
+              "resource": {
+                "@id": "https://iiif.example.org/iiif/img1/full/full/0/default.jpg",
+                "@type": "dctypes:Image",
+                "format": "image/jpeg"
+              }
+            }
+          ]
+        },
+        {
+          "@id": "https://iiif.example.org/ark/12657/iiif-19944535/canvas/p2",
+          "@type": "sc:Canvas",
+          "label": "0002",
+          "images": [
+            {
+              "@type": "oa:Annotation",
+              "resource": {
+                "@id": "https://iiif.example.org/iiif/img2/full/full/0/default.jpg",
+                "@type": "dctypes:Image",
+                "format": "image/jpeg"
+              }
+            }
+          ]
+        },
+        {
+          "@id": "https://iiif.example.org/ark/12657/iiif-19944535/canvas/p3",
+          "@type": "sc:Canvas",
+          "label": "0003",
+          "images": [
+            {
+              "@type": "oa:Annotation",
+              "resource": {
+                "@id": "https://iiif.example.org/iiif/img3/full/full/0/default.jpg",
+                "@type": "dctypes:Image",
+                "format": "image/jpeg"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

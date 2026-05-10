@@ -1,0 +1,9 @@
+# Development dependencies. Runtime deps live in requirements.txt.
+# Install with:
+#   pip install -r requirements.txt -r requirements-dev.txt
+ruff==0.15.8
+mypy==1.19.1
+pytest==9.0.3
+responses==0.25.8
+types-requests
+pre-commit
