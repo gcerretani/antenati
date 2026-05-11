@@ -135,6 +135,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# uv (not the project's package manager — only used ad-hoc locally)
+uv.lock
+
 # Spyder project settings
 .spyderproject
 .spyproject
