@@ -39,6 +39,17 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+# Pinned dev tooling. Install with: pip install -e ".[dev]"
+dev = [
+    "mypy==1.19.1",
+    "pre-commit",
+    "pytest==9.0.3",
+    "responses==0.25.8",
+    "ruff==0.15.8",
+    "types-requests",
+]
+
 [project.urls]
 Homepage = "https://gcerretani.github.io/antenati/"
 Repository = "https://github.com/gcerretani/antenati"
