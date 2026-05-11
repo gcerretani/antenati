@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from antenati import AntenatiDownloader
+from antenati import Downloader
 from antenati import iiif as antenati_iiif
 from antenati.errors import ManifestError
 
@@ -25,7 +25,7 @@ def test_get_metadata_value_without_metadata_field_raises() -> None:
 
 
 def test_generate_dirname_combines_metadata_and_archive_id(
-    downloader: AntenatiDownloader,
+    downloader: Downloader,
 ) -> None:
     # slugify lowercases and replaces slashes/spaces with single dashes
     name = str(downloader.dirname)
@@ -35,7 +35,7 @@ def test_generate_dirname_combines_metadata_and_archive_id(
     assert 'stato-civile-italiano' in name
 
 
-def test_print_gallery_info_outputs_metadata(downloader: AntenatiDownloader, capsys: pytest.CaptureFixture[str]) -> None:
+def test_print_gallery_info_outputs_metadata(downloader: Downloader, capsys: pytest.CaptureFixture[str]) -> None:
     downloader.print_gallery_info()
     out = capsys.readouterr().out
     assert 'Contesto archivistico' in out

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from importlib.metadata import PackageNotFoundError, version
 
 __author__ = 'Giovanni Cerretani'
@@ -25,16 +26,9 @@ from antenati.downloader import (
 )
 from antenati.errors import ThreadError
 
-# Backwards-compatible alias for callers (notably any external script and
-# the historical ``import antenati; antenati.AntenatiDownloader`` shape).
-# Removing the alias is a major version bump scheduled for a later
-# cleanup PR.
-AntenatiDownloader = Downloader
-
 __all__ = [
     'DEFAULT_N_THREADS',
     'DEFAULT_SIZE',
-    'AntenatiDownloader',
     'Downloader',
     'ProgressBar',
     'ThreadError',
@@ -44,3 +38,14 @@ __all__ = [
     '__license__',
     '__version__',
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name == 'AntenatiDownloader':
+        warnings.warn(
+            'AntenatiDownloader is deprecated and will be removed in v7.0; use antenati.Downloader instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return Downloader
+    raise AttributeError(f"module 'antenati' has no attribute {name!r}")

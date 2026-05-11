@@ -3,7 +3,7 @@
 The HTML and IIIF JSON fixtures under ``tests/fixtures/`` mirror the shape
 of the responses served by the real Portale Antenati but contain no real
 data. They let us exercise the parsing, URL manipulation and download
-orchestration of ``AntenatiDownloader`` entirely offline.
+orchestration of :class:`antenati.Downloader` entirely offline.
 """
 
 from __future__ import annotations
@@ -73,6 +73,6 @@ def mocked_http(gallery_html: str, manifest_text: str):
 
 
 @pytest.fixture
-def downloader(mocked_http) -> antenati.AntenatiDownloader:
-    """Build an AntenatiDownloader against the mocked gallery+manifest."""
-    return antenati.AntenatiDownloader(GALLERY_URL, first=0, last=None)
+def downloader(mocked_http) -> antenati.Downloader:
+    """Build a Downloader against the mocked gallery+manifest."""
+    return antenati.Downloader(GALLERY_URL, first=0, last=None)

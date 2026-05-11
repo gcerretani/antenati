@@ -1,4 +1,4 @@
-"""End-to-end tests for ``AntenatiDownloader.run`` with mocked HTTP.
+"""End-to-end tests for ``Downloader.run`` with mocked HTTP.
 
 These tests are the main safety net: they exercise the full happy path
 (gallery -> manifest -> per-image download -> filesystem writes) and a few
@@ -14,7 +14,7 @@ import pytest
 import responses
 
 import antenati
-from antenati import AntenatiDownloader, ProgressBar
+from antenati import Downloader, ProgressBar
 from antenati import cli as antenati_cli
 from tests.conftest import GALLERY_URL, TINY_JPEG
 
@@ -31,12 +31,12 @@ def _image_url(canvas_label: str, size: int) -> str:
 
 
 @pytest.fixture
-def downloader_in_tmp(downloader: AntenatiDownloader, tmp_path: Path) -> AntenatiDownloader:
+def downloader_in_tmp(downloader: Downloader, tmp_path: Path) -> Downloader:
     downloader.check_dir(parentdir=str(tmp_path), interactive=False)
     return downloader
 
 
-def test_run_downloads_all_images_full_size(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+def test_run_downloads_all_images_full_size(mocked_http, downloader_in_tmp: Downloader) -> None:
     for label in ('0001', '0002', '0003'):
         mocked_http.add(
             responses.GET,
@@ -51,7 +51,7 @@ def test_run_downloads_all_images_full_size(mocked_http, downloader_in_tmp: Ante
     assert files == ['0001.jpg', '0002.jpg', '0003.jpg']
 
 
-def test_run_uses_constrained_size_urls(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+def test_run_uses_constrained_size_urls(mocked_http, downloader_in_tmp: Downloader) -> None:
     size = 1234
     for label in ('0001', '0002', '0003'):
         mocked_http.add(
@@ -65,7 +65,7 @@ def test_run_uses_constrained_size_urls(mocked_http, downloader_in_tmp: Antenati
     assert total == 3 * len(TINY_JPEG)
 
 
-def test_run_partial_failure_raises_with_summary(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+def test_run_partial_failure_raises_with_summary(mocked_http, downloader_in_tmp: Downloader) -> None:
     # First image succeeds, second 500s, third succeeds.
     mocked_http.add(
         responses.GET,
@@ -92,7 +92,7 @@ def test_run_partial_failure_raises_with_summary(mocked_http, downloader_in_tmp:
         downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
 
 
-def test_run_progress_callbacks_are_invoked(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+def test_run_progress_callbacks_are_invoked(mocked_http, downloader_in_tmp: Downloader) -> None:
     for label in ('0001', '0002', '0003'):
         mocked_http.add(
             responses.GET,
@@ -116,7 +116,7 @@ def test_run_progress_callbacks_are_invoked(mocked_http, downloader_in_tmp: Ante
 def test_run_filename_uses_image_extension(mocked_http, tmp_path: Path) -> None:
     # Construct a downloader with a single canvas served as PNG so we can
     # observe ``guess_extension`` picking up a different extension.
-    dl = AntenatiDownloader(GALLERY_URL, first=0, last=1)
+    dl = Downloader(GALLERY_URL, first=0, last=1)
     dl.check_dir(parentdir=str(tmp_path), interactive=False)
     mocked_http.add(
         responses.GET,
@@ -130,7 +130,7 @@ def test_run_filename_uses_image_extension(mocked_http, tmp_path: Path) -> None:
 
 
 def test_run_with_first_last_range_downloads_subset(mocked_http, tmp_path: Path) -> None:
-    dl = AntenatiDownloader(GALLERY_URL, first=1, last=3)
+    dl = Downloader(GALLERY_URL, first=1, last=3)
     dl.check_dir(parentdir=str(tmp_path), interactive=False)
     for label in ('0002', '0003'):
         mocked_http.add(
@@ -145,7 +145,7 @@ def test_run_with_first_last_range_downloads_subset(mocked_http, tmp_path: Path)
     assert files == ['0002.jpg', '0003.jpg']
 
 
-def test_run_unknown_content_type_is_reported_as_failure(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+def test_run_unknown_content_type_is_reported_as_failure(mocked_http, downloader_in_tmp: Downloader) -> None:
     # All three respond with a content-type ``guess_extension`` cannot map.
     for label in ('0001', '0002', '0003'):
         mocked_http.add(
@@ -159,7 +159,7 @@ def test_run_unknown_content_type_is_reported_as_failure(mocked_http, downloader
         downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
 
 
-def test_run_cli_uses_tqdm_progress_bar(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+def test_run_cli_uses_tqdm_progress_bar(mocked_http, downloader_in_tmp: Downloader) -> None:
     for label in ('0001', '0002', '0003'):
         mocked_http.add(
             responses.GET,
@@ -178,7 +178,7 @@ def test_progress_bar_dataclass_shape() -> None:
     assert callable(bar.update)
 
 
-def test_run_honours_preset_cancel_event(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+def test_run_honours_preset_cancel_event(mocked_http, downloader_in_tmp: Downloader) -> None:
     # Register all canvases as 200s; with cancel already set when run()
     # starts, no fetch should be attempted and the total bytes returned
     # must be zero. The mock is created with assert_all_requests_are_fired
