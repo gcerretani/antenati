@@ -7,6 +7,7 @@ key failure modes so the upcoming refactor cannot regress them silently.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -175,3 +176,22 @@ def test_progress_bar_dataclass_shape() -> None:
     bar = antenati.ProgressBar(set_total=lambda _t: None, update=lambda: None)
     assert callable(bar.set_total)
     assert callable(bar.update)
+
+
+def test_run_honours_preset_cancel_event(mocked_http, downloader_in_tmp: AntenatiDownloader) -> None:
+    # Register all canvases as 200s; with cancel already set when run()
+    # starts, no fetch should be attempted and the total bytes returned
+    # must be zero. The mock is created with assert_all_requests_are_fired
+    # = False so unused registrations don't fail the test.
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    cancel = threading.Event()
+    cancel.set()
+    total = downloader_in_tmp.run(n_workers=1, size=0, progress=_null_progress(), cancel=cancel)
+    assert total == 0

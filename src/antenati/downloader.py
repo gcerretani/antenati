@@ -14,6 +14,7 @@ plumbing (``argparse``, ``click.confirm``, ``tqdm``).
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -129,14 +130,33 @@ class Downloader:
             logger.warning('Image %s failed: %s', label, ex)
             raise ThreadError(label) from ex
 
-    def run(self, n_workers: int, size: int, progress: ProgressBar) -> int:
-        """Download all canvases concurrently. Returns total bytes written."""
+    def run(
+        self,
+        n_workers: int,
+        size: int,
+        progress: ProgressBar,
+        cancel: threading.Event | None = None,
+    ) -> int:
+        """Download all canvases concurrently. Returns total bytes written.
+
+        Passing ``cancel`` lets a caller (typically the GUI) request early
+        termination: when the event is set, futures that have not started
+        yet are skipped and the call returns the partial total. Already
+        running fetches finish naturally — interrupting an in-flight HTTP
+        request requires patching :mod:`requests`, which is more invasive
+        than the benefit warrants.
+        """
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             future_img = {executor.submit(self.__thread_main, i, size) for i in self.canvases}
             progress.set_total(self.gallery_length)
             gallery_size = 0
             failed: dict[str, str] = {}
             for future in as_completed(future_img):
+                if cancel is not None and cancel.is_set():
+                    for f in future_img:
+                        f.cancel()
+                    logger.info('Download cancelled by caller')
+                    return gallery_size
                 progress.update()
                 try:
                     gallery_size += future.result()

@@ -81,14 +81,9 @@ extend-exclude = ["build", "dist", "src/antenati/_version.py"]
 # refactor lands and the affected code is rewritten.
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "RET", "TID"]
 
-[tool.ruff.lint.per-file-ignores]
-# antenati.gui is the only module still untouched by the refactor; its
-# imports will be sorted when the GUI worker extraction lands.
-"src/antenati/gui.py" = ["I001"]
-
 [tool.ruff.format]
 quote-style = "single"
-exclude = ["src/antenati/gui.py", "src/antenati/_version.py"]
+exclude = ["src/antenati/_version.py"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -96,11 +91,6 @@ ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unreachable = true
 check_untyped_defs = true
-
-# antenati.gui keeps a relaxed override until the worker refactor.
-[[tool.mypy.overrides]]
-module = ["antenati.gui"]
-ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
