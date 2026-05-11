@@ -9,7 +9,7 @@ without re-implementing the SAN-server quirks:
   5xx and rate-limit responses.
 - :func:`fetch` performs a ``GET`` and turns the AWS WAF challenge
   response (HTTP 202 with ``x-amzn-waf-action: challenge``) into a typed
-  :class:`antenati_errors.WafChallengeError`.
+  :class:`antenati.errors.WafChallengeError`.
 - :func:`get_content_type` / :func:`get_content_charset` parse a
   response's ``Content-Type`` header.
 
@@ -28,7 +28,7 @@ from requests.adapters import HTTPAdapter
 from requests.utils import default_headers
 from urllib3.util.retry import Retry
 
-from antenati_errors import WafChallengeError
+from antenati.errors import WafChallengeError
 
 logger = logging.getLogger(__name__)
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-import antenati_iiif
 from antenati import AntenatiDownloader
-from antenati_errors import ManifestError
+from antenati import iiif as antenati_iiif
+from antenati.errors import ManifestError
 
 
 def test_get_metadata_value_finds_label(manifest_dict: dict) -> None:

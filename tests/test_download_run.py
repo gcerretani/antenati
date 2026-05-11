@@ -14,6 +14,7 @@ import responses
 
 import antenati
 from antenati import AntenatiDownloader, ProgressBar
+from antenati import cli as antenati_cli
 from tests.conftest import GALLERY_URL, TINY_JPEG
 
 
@@ -166,7 +167,7 @@ def test_run_cli_uses_tqdm_progress_bar(mocked_http, downloader_in_tmp: Antenati
             status=200,
             content_type='image/jpeg',
         )
-    total = antenati.run_cli(downloader_in_tmp, n_workers=2, size=0)
+    total = antenati_cli.run_cli(downloader_in_tmp, n_workers=2, size=0)
     assert total == 3 * len(TINY_JPEG)
 
 

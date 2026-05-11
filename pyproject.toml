@@ -1,13 +1,79 @@
-# NOTE: This is a tooling-only pyproject.toml. The [project] table will be
-# added in a later step together with the move to a src/ layout and the
-# switch to hatchling + hatch-vcs for dynamic versioning. For now, the
-# package is still distributed as standalone scripts and PyInstaller
-# binaries, so we only configure dev tools here.
+[build-system]
+requires = ["hatchling>=1.21", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "antenati"
+description = "Download data from the Portale Antenati, the italian state genealogy archive"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Giovanni Cerretani" },
+]
+keywords = ["antenati", "genealogy", "iiif", "downloader", "portale-antenati"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Environment :: X11 Applications",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Natural Language :: Italian",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "click~=8.3.0",
+    "humanize~=4.14.0",
+    "python-slugify~=8.0.4",
+    "requests~=2.32.5",
+    "tqdm~=4.67.1",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://gcerretani.github.io/antenati/"
+Repository = "https://github.com/gcerretani/antenati"
+Issues = "https://github.com/gcerretani/antenati/issues"
+Changelog = "https://github.com/gcerretani/antenati/blob/master/CHANGELOG.md"
+
+[project.scripts]
+antenati = "antenati.cli:main"
+
+[project.gui-scripts]
+antenati-gui = "antenati.gui:main"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/antenati/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/antenati"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/antenati",
+    "tests",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "pyproject.toml",
+]
 
 [tool.ruff]
 line-length = 160
 target-version = "py310"
-extend-exclude = ["build", "dist"]
+extend-exclude = ["build", "dist", "src/antenati/_version.py"]
 
 [tool.ruff.lint]
 # Conservative starting set: enabled rules already pass on the current
@@ -16,14 +82,13 @@ extend-exclude = ["build", "dist"]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "RET", "TID"]
 
 [tool.ruff.lint.per-file-ignores]
-# antenati_gui.py is the only file still untouched by the refactor; its
+# antenati.gui is the only module still untouched by the refactor; its
 # imports will be sorted when the GUI worker extraction lands.
-"antenati_gui.py" = ["I001"]
+"src/antenati/gui.py" = ["I001"]
 
 [tool.ruff.format]
 quote-style = "single"
-# antenati_gui.py is reformatted in the GUI worker extraction PR.
-exclude = ["antenati_gui.py"]
+exclude = ["src/antenati/gui.py", "src/antenati/_version.py"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -32,9 +97,9 @@ warn_redundant_casts = true
 warn_unreachable = true
 check_untyped_defs = true
 
-# antenati_gui.py keeps a relaxed override until the worker refactor.
+# antenati.gui keeps a relaxed override until the worker refactor.
 [[tool.mypy.overrides]]
-module = ["antenati_gui"]
+module = ["antenati.gui"]
 ignore_errors = true
 
 [tool.pytest.ini_options]

@@ -1,11 +1,10 @@
 """Exception hierarchy for the antenati downloader.
 
-A single base ``AntenatiError`` lets callers catch any tool-specific error
-with one ``except`` while still allowing fine-grained handling. The
-``ManifestError`` and ``WafChallengeError`` subclasses are defined here
-ahead of the hardening PR that will start raising them in
-:mod:`antenati_iiif` and :mod:`antenati_http` -- existing call sites keep
-raising ``RuntimeError`` for now to preserve behaviour.
+A single base ``AntenatiError`` lets callers catch any tool-specific
+error with one ``except`` while still allowing fine-grained handling.
+``ManifestError`` is raised by :mod:`antenati.iiif` for malformed gallery
+or manifest data; ``WafChallengeError`` is raised by :mod:`antenati.http`
+on the SAN server's AWS WAF challenge response.
 """
 
 from __future__ import annotations

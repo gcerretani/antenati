@@ -9,6 +9,10 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # hatch-vcs needs the full history (or at least the tags) to
+        # derive the package version from the latest git tag.
+        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v6
@@ -18,7 +22,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt -r requirements-dev.txt
+        pip install -r requirements-dev.txt
+        pip install -e .
 
     - name: Ruff check
       run: ruff check .
@@ -27,7 +32,7 @@ jobs:
       run: ruff format --check .
 
     - name: Mypy
-      run: mypy antenati.py antenati_gui.py antenati_http.py antenati_iiif.py antenati_downloader.py antenati_errors.py
+      run: mypy src/antenati antenati_gui.py
 
     - name: Pytest (offline only)
       run: pytest -m "not integration"
@@ -45,6 +50,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v6
@@ -54,8 +61,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install .
 
     - name: Download test
       run: |
-        python antenati.py "https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x"
+        antenati "https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x"

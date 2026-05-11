@@ -2,11 +2,11 @@
 
 All functions in this module work on plain Python data (strings, dicts).
 None of them perform I/O, which makes them straightforward to unit test
-offline. :class:`antenati_downloader.Downloader` orchestrates HTTP
+offline. :class:`antenati.downloader.Downloader` orchestrates HTTP
 fetching and delegates the parsing to these helpers.
 
 Errors raised by this module are all subclasses of
-:class:`antenati_errors.ManifestError`, so callers can catch one type to
+:class:`antenati.errors.ManifestError`, so callers can catch one type to
 distinguish "the gallery looks malformed" from network or filesystem
 failures.
 """
@@ -16,7 +16,7 @@ from __future__ import annotations
 from re import findall, search
 from typing import Any
 
-from antenati_errors import ManifestError
+from antenati.errors import ManifestError
 
 # The gallery HTML embeds the IIIF manifest URL inside a JavaScript
 # ``manifestId = '<URL>'`` assignment. The pattern accepts both single

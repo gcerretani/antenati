@@ -1,12 +1,12 @@
-"""Focused unit tests for :mod:`antenati_http`."""
+"""Focused unit tests for :mod:`antenati.http`."""
 
 from __future__ import annotations
 
 import pytest
 import responses
 
-import antenati_http
-from antenati_errors import WafChallengeError
+from antenati import http as antenati_http
+from antenati.errors import WafChallengeError
 
 
 def test_build_session_sets_required_headers() -> None:

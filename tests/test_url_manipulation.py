@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-import antenati_iiif
+from antenati import iiif as antenati_iiif
 
 ORIGINAL = 'https://iiif.example.org/iiif/img1/full/full/0/default.jpg'
 
