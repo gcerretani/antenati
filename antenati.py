@@ -9,6 +9,7 @@ __license__ = 'MIT License'
 __version__ = '5.0'
 __contact__ = 'https://gcerretani.github.io/antenati/'
 
+import logging
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 from humanize import naturalsize
@@ -16,6 +17,22 @@ from tqdm import tqdm
 
 from antenati_downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, ProgressBar
 from antenati_errors import ThreadError
+
+
+def _configure_logging(verbosity: int) -> None:
+    """Configure the root logger from a -v/-vv count.
+
+    Default (no flag) keeps the historical behaviour: only WARNING and
+    above are visible. ``--verbose`` raises to INFO; passing it twice
+    enables DEBUG (including each HTTP request).
+    """
+    level = logging.WARNING
+    if verbosity >= 2:
+        level = logging.DEBUG
+    elif verbosity >= 1:
+        level = logging.INFO
+    logging.basicConfig(level=level, format='%(levelname)s %(name)s: %(message)s')
+
 
 # Backwards-compatible alias: external scripts and ``antenati_gui`` still
 # import ``antenati.AntenatiDownloader``. Removing the alias is a major
@@ -80,8 +97,15 @@ def main() -> None:
         help='first image NOT to download',
     )
     parser.add_argument('-v', '--version', action='version', version=__version__)
+    parser.add_argument(
+        '--verbose',
+        action='count',
+        default=0,
+        help='increase logging verbosity (--verbose for INFO, --verbose --verbose for DEBUG)',
+    )
     args = parser.parse_args()
 
+    _configure_logging(args.verbose)
     downloader = Downloader(args.url, args.first, args.last)
     downloader.print_gallery_info()
     downloader.check_dir()

@@ -13,6 +13,7 @@ plumbing (``argparse``, ``click.confirm``, ``tqdm``).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -24,12 +25,14 @@ from sys import exit as sys_exit
 from typing import Any
 
 from click import confirm, echo
-from requests import Session
+from requests import RequestException, Session
 from slugify import slugify
 
 import antenati_http
 import antenati_iiif
-from antenati_errors import ThreadError
+from antenati_errors import AntenatiError, ThreadError
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SIZE: int = 0
 DEFAULT_N_THREADS: int = 2
@@ -63,24 +66,27 @@ class Downloader:
         self.url = url
         self.session = antenati_http.build_session()
         self.archive_id = antenati_iiif.get_archive_id_from_url(url)
+        logger.info('Loading manifest for archive %s', self.archive_id)
         self.manifest = self.__load_manifest()
         self.canvases = antenati_iiif.slice_canvases(self.manifest, first, last)
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
+        logger.info('Manifest loaded: %d canvases selected', self.gallery_length)
 
     def __load_manifest(self) -> dict[str, Any]:
         gallery_reply = antenati_http.fetch(self.session, self.url)
         gallery_charset = antenati_http.get_content_charset(gallery_reply) or 'utf-8'
         gallery_html = gallery_reply.content.decode(gallery_charset)
         manifest_url = antenati_iiif.parse_manifest_url_from_html(gallery_html, self.url)
+        logger.debug('Manifest URL: %s', manifest_url)
         manifest_reply = antenati_http.fetch(self.session, manifest_url)
         manifest_charset = antenati_http.get_content_charset(manifest_reply) or 'utf-8'
         return loads(manifest_reply.content.decode(manifest_charset))
 
     def __generate_dirname(self) -> Path:
-        context = antenati_iiif.get_metadata_value(self.manifest, 'Contesto archivistico')
-        year = antenati_iiif.get_metadata_value(self.manifest, 'Titolo')
-        typology = antenati_iiif.get_metadata_value(self.manifest, 'Tipologia')
+        context = antenati_iiif.get_metadata_value(self.manifest, antenati_iiif.META_CONTEXT)
+        year = antenati_iiif.get_metadata_value(self.manifest, antenati_iiif.META_TITLE)
+        typology = antenati_iiif.get_metadata_value(self.manifest, antenati_iiif.META_TYPOLOGY)
         return Path(slugify(f'{context}-{year}-{typology}-{self.archive_id}'))
 
     def print_gallery_info(self) -> None:
@@ -120,7 +126,8 @@ class Downloader:
             with open(filename, 'wb') as img_file:
                 img_file.write(http_reply.content)
             return len(http_reply.content)
-        except Exception as ex:
+        except (RequestException, AntenatiError, OSError, RuntimeError) as ex:
+            logger.warning('Image %s failed: %s', label, ex)
             raise ThreadError(label) from ex
 
     def run(self, n_workers: int, size: int, progress: ProgressBar) -> int:

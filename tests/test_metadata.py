@@ -6,6 +6,7 @@ import pytest
 
 import antenati_iiif
 from antenati import AntenatiDownloader
+from antenati_errors import ManifestError
 
 
 def test_get_metadata_value_finds_label(manifest_dict: dict) -> None:
@@ -14,8 +15,13 @@ def test_get_metadata_value_finds_label(manifest_dict: dict) -> None:
 
 
 def test_get_metadata_value_unknown_label_raises(manifest_dict: dict) -> None:
-    with pytest.raises(RuntimeError, match='Cannot get'):
+    with pytest.raises(ManifestError, match='Cannot get'):
         antenati_iiif.get_metadata_value(manifest_dict, 'does-not-exist')
+
+
+def test_get_metadata_value_without_metadata_field_raises() -> None:
+    with pytest.raises(ManifestError, match="no 'metadata' field"):
+        antenati_iiif.get_metadata_value({}, 'Titolo')
 
 
 def test_generate_dirname_combines_metadata_and_archive_id(
