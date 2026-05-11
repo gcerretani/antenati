@@ -166,7 +166,7 @@ def test_run_cli_uses_tqdm_progress_bar(mocked_http, downloader_in_tmp: Antenati
             status=200,
             content_type='image/jpeg',
         )
-    total = downloader_in_tmp.run_cli(n_workers=2, size=0)
+    total = antenati.run_cli(downloader_in_tmp, n_workers=2, size=0)
     assert total == 3 * len(TINY_JPEG)
 
 

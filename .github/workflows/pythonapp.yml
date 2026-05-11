@@ -27,7 +27,7 @@ jobs:
       run: ruff format --check .
 
     - name: Mypy
-      run: mypy antenati.py antenati_gui.py antenati_http.py antenati_iiif.py
+      run: mypy antenati.py antenati_gui.py antenati_http.py antenati_iiif.py antenati_downloader.py antenati_errors.py
 
     - name: Pytest (offline only)
       run: pytest -m "not integration"

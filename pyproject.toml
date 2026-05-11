@@ -6,7 +6,7 @@
 
 [tool.ruff]
 line-length = 160
-target-version = "py39"
+target-version = "py310"
 extend-exclude = ["build", "dist"]
 
 [tool.ruff.lint]
@@ -14,42 +14,27 @@ extend-exclude = ["build", "dist"]
 # codebase. Stricter rules (PTH, ANN, D, etc.) will be turned on as the
 # refactor lands and the affected code is rewritten.
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "RET", "TID"]
-ignore = [
-    # Allow `Optional[...]` / `Union[...]` while still on Python 3.9.
-    "UP007",
-    "UP045",
-]
 
 [tool.ruff.lint.per-file-ignores]
-# Legacy single-file modules: relax style-only rules until they are split
-# into the new package layout in the refactor PRs. Real lint issues are
-# still enforced.
-"antenati.py" = ["UP034", "SIM108", "RET504"]
+# antenati_gui.py is the only file still untouched by the refactor; its
+# imports will be sorted when the GUI worker extraction lands.
 "antenati_gui.py" = ["I001"]
 
 [tool.ruff.format]
 quote-style = "single"
-# Legacy single-file modules will be reformatted in a dedicated PR once
-# they are split into the new package layout, to keep the diff for each
-# refactor PR readable.
-exclude = ["antenati.py", "antenati_gui.py"]
+# antenati_gui.py is reformatted in the GUI worker extraction PR.
+exclude = ["antenati_gui.py"]
 
 [tool.mypy]
-# mypy 1.19+ no longer supports type-checking against Python 3.9. The code
-# itself still targets py39 (see ruff's target-version) and is verified to
-# import on 3.9 in CI; type narrowing just gets analysed as if running on
-# 3.10. Bump this in sync with the runtime minimum if/when 3.9 is dropped.
 python_version = "3.10"
 ignore_missing_imports = true
 warn_redundant_casts = true
 warn_unreachable = true
 check_untyped_defs = true
 
-# Legacy single-file modules: keep mypy importing them without enforcing
-# strict checks until they are split into the new package layout. Strict
-# mode will then be enabled module-by-module in the refactor PRs.
+# antenati_gui.py keeps a relaxed override until the worker refactor.
 [[tool.mypy.overrides]]
-module = ["antenati", "antenati_gui"]
+module = ["antenati_gui"]
 ignore_errors = true
 
 [tool.pytest.ini_options]

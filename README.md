@@ -19,7 +19,7 @@ Copy the link to the first page, and paste it in the Archive URL field of the wi
 ## CLI version
 
 ### Requirements
-The software is written in Python 3 and tested with Python 3.9. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
+The software is written in Python 3 and requires Python 3.10 or newer. On Windows the version on the Microsoft Store is fine, on Linux use your distribution package manager.
 
 ### Usage
 Open your preferite terminal and change directory to where you've extracted the content of this repo. Then execute the following commands.

@@ -14,7 +14,7 @@ will land in a dedicated PR with its own tests.
 from __future__ import annotations
 
 from re import findall, search
-from typing import Any, Optional
+from typing import Any
 
 # The gallery HTML embeds the IIIF manifest URL inside a JavaScript
 # ``manifestId = '<URL>'`` assignment. The character class below is what
@@ -79,7 +79,7 @@ def get_metadata_value(manifest: dict[str, Any], label: str) -> str:
         raise RuntimeError(f'Cannot get {label} from manifest') from exc
 
 
-def slice_canvases(manifest: dict[str, Any], first: int, last: Optional[int]) -> list[dict[str, Any]]:
+def slice_canvases(manifest: dict[str, Any], first: int, last: int | None) -> list[dict[str, Any]]:
     """Return ``manifest['sequences'][0]['canvases'][first:last]``.
 
     Encapsulating this single index access keeps the assumption (single
