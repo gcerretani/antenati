@@ -1,7 +1,7 @@
 """Tests for the IIIF gallery parsing path.
 
-Exercises both the pure helpers in :mod:`antenati_iiif` /
-:mod:`antenati_http` and the orchestration in
+Exercises both the pure helpers in :mod:`antenati.iiif` /
+:mod:`antenati.http` and the orchestration in
 :class:`antenati.AntenatiDownloader`.
 """
 
@@ -12,10 +12,10 @@ import responses
 from requests import Session
 
 import antenati
-import antenati_http
-import antenati_iiif
 from antenati import AntenatiDownloader
-from antenati_errors import ManifestError, WafChallengeError
+from antenati import http as antenati_http
+from antenati import iiif as antenati_iiif
+from antenati.errors import ManifestError, WafChallengeError
 from tests.conftest import ARCHIVE_ID, GALLERY_URL, MANIFEST_URL
 
 

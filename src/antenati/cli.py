@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
-"""
-antenati.py: a tool to download data from the Portale Antenati
-"""
+"""Command-line entry point for the Portale Antenati downloader."""
 
-__author__ = 'Giovanni Cerretani'
-__copyright__ = 'Copyright (c) 2022, Giovanni Cerretani'
-__license__ = 'MIT License'
-__version__ = '5.0'
-__contact__ = 'https://gcerretani.github.io/antenati/'
+from __future__ import annotations
 
 import logging
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
@@ -15,12 +9,12 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from humanize import naturalsize
 from tqdm import tqdm
 
-from antenati_downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, ProgressBar
-from antenati_errors import ThreadError
+from antenati import __copyright__, __version__
+from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, ProgressBar
 
 
 def _configure_logging(verbosity: int) -> None:
-    """Configure the root logger from a -v/-vv count.
+    """Configure the root logger from a --verbose count.
 
     Default (no flag) keeps the historical behaviour: only WARNING and
     above are visible. ``--verbose`` raises to INFO; passing it twice
@@ -34,26 +28,6 @@ def _configure_logging(verbosity: int) -> None:
     logging.basicConfig(level=level, format='%(levelname)s %(name)s: %(message)s')
 
 
-# Backwards-compatible alias: external scripts and ``antenati_gui`` still
-# import ``antenati.AntenatiDownloader``. Removing the alias is a major
-# version bump scheduled for a later cleanup PR.
-AntenatiDownloader = Downloader
-
-# Keep ProgressBar / ThreadError / DEFAULT_* importable from ``antenati``
-# for the same reason. Re-exporting from the module makes the move
-# transparent to GUI code and any user scripts.
-__all__ = [
-    'DEFAULT_N_THREADS',
-    'DEFAULT_SIZE',
-    'AntenatiDownloader',
-    'Downloader',
-    'ProgressBar',
-    'ThreadError',
-    '__version__',
-    'run_cli',
-]
-
-
 def run_cli(downloader: Downloader, n_workers: int, size: int) -> int:
     """Run the download with a tqdm progress bar attached."""
     with tqdm(unit='img') as progress:
@@ -63,7 +37,7 @@ def run_cli(downloader: Downloader, n_workers: int, size: int) -> int:
 
 def main() -> None:
     parser = ArgumentParser(
-        description=__doc__,
+        description='Download data from the Portale Antenati',
         epilog=__copyright__,
         formatter_class=ArgumentDefaultsHelpFormatter,
     )

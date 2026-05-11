@@ -1,16 +1,16 @@
-"""Tests for the defensive guards added to :mod:`antenati_iiif`.
+"""Tests for the defensive guards added to :mod:`antenati.iiif`.
 
 These cover the manifest-shape failure modes that used to raise raw
 ``KeyError`` / ``IndexError`` exceptions and now surface as typed
-:class:`antenati_errors.ManifestError`.
+:class:`antenati.errors.ManifestError`.
 """
 
 from __future__ import annotations
 
 import pytest
 
-import antenati_iiif
-from antenati_errors import ManifestError
+from antenati import iiif as antenati_iiif
+from antenati.errors import ManifestError
 
 
 def test_slice_canvases_missing_sequences_raises() -> None:
