@@ -19,7 +19,6 @@ later refactor step.
 from __future__ import annotations
 
 from email.message import Message
-from typing import Optional
 
 from requests import Response, Session
 from requests.utils import default_headers
@@ -79,7 +78,7 @@ def get_content_type(reply: Response) -> str:
     return msg.get_content_type()
 
 
-def get_content_charset(reply: Response) -> Optional[str]:
+def get_content_charset(reply: Response) -> str | None:
     """Return the charset declared in a response's Content-Type, if any."""
     msg = Message()
     msg['Content-Type'] = reply.headers['Content-Type']

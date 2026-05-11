@@ -23,6 +23,6 @@ repos:
     rev: v1.19.1
     hooks:
       - id: mypy
-        files: ^(antenati|antenati_gui|antenati_http|antenati_iiif)\.py$
+        files: ^(antenati|antenati_gui|antenati_http|antenati_iiif|antenati_downloader|antenati_errors)\.py$
         additional_dependencies:
           - types-requests
