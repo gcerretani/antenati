@@ -6,6 +6,7 @@ import pytest
 import responses
 
 import antenati_http
+from antenati_errors import WafChallengeError
 
 
 def test_build_session_sets_required_headers() -> None:
@@ -53,8 +54,47 @@ def test_fetch_raises_on_waf_challenge() -> None:
             headers={antenati_http.WAF_CHALLENGE_HEADER: antenati_http.WAF_CHALLENGE_VALUE},
             content_type='text/html; charset=utf-8',
         )
-        with pytest.raises(RuntimeError, match='AWS WAF challenge'):
+        with pytest.raises(WafChallengeError, match='AWS WAF challenge'):
             antenati_http.fetch(session, 'https://example.org/challenge')
+
+
+def test_fetch_retries_on_503_then_succeeds() -> None:
+    session = antenati_http.build_session()
+    with responses.RequestsMock() as rsps:
+        # urllib3's Retry consumes one response per attempt; queue two
+        # transient failures followed by a success.
+        rsps.add(
+            responses.GET,
+            'https://example.org/flaky',
+            body='oops',
+            status=503,
+            content_type='text/plain',
+        )
+        rsps.add(
+            responses.GET,
+            'https://example.org/flaky',
+            body='oops',
+            status=503,
+            content_type='text/plain',
+        )
+        rsps.add(
+            responses.GET,
+            'https://example.org/flaky',
+            body='ok',
+            status=200,
+            content_type='text/plain',
+        )
+        reply = antenati_http.fetch(session, 'https://example.org/flaky')
+    assert reply.status_code == 200
+    assert reply.text == 'ok'
+
+
+def test_session_mounts_retrying_adapter() -> None:
+    session = antenati_http.build_session()
+    adapter = session.get_adapter('https://example.org/')
+    retry = adapter.max_retries
+    assert retry.total == antenati_http.RETRY_TOTAL
+    assert set(retry.status_forcelist) == set(antenati_http.RETRYABLE_STATUSES)
 
 
 def test_fetch_does_not_treat_plain_202_as_waf() -> None:

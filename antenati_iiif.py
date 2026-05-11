@@ -2,13 +2,13 @@
 
 All functions in this module work on plain Python data (strings, dicts).
 None of them perform I/O, which makes them straightforward to unit test
-offline. ``antenati.AntenatiDownloader`` orchestrates HTTP fetching and
-delegates the parsing to these helpers.
+offline. :class:`antenati_downloader.Downloader` orchestrates HTTP
+fetching and delegates the parsing to these helpers.
 
-The current implementations preserve the exact behaviour of the legacy
-single-file ``antenati.py`` -- including a couple of known fragilities in
-the manifest URL regex and the unguarded JSON accesses. Hardening those
-will land in a dedicated PR with its own tests.
+Errors raised by this module are all subclasses of
+:class:`antenati_errors.ManifestError`, so callers can catch one type to
+distinguish "the gallery looks malformed" from network or filesystem
+failures.
 """
 
 from __future__ import annotations
@@ -16,17 +16,25 @@ from __future__ import annotations
 from re import findall, search
 from typing import Any
 
+from antenati_errors import ManifestError
+
 # The gallery HTML embeds the IIIF manifest URL inside a JavaScript
-# ``manifestId = '<URL>'`` assignment. The character class below is what
-# the legacy parser accepted; broadening it (e.g. to allow underscores or
-# query strings) is a behaviour change and is deliberately deferred.
-_MANIFEST_URL_PATTERN: str = r'\'([A-Za-z0-9.:/-]*)\''
+# ``manifestId = '<URL>'`` assignment. The pattern accepts both single
+# and double quotes around the URL and is intentionally permissive about
+# what characters are allowed inside the URL (anything that's not the
+# closing quote) to survive future URL changes by the SAN team.
+_MANIFEST_URL_PATTERN: str = r"""['"](https?://[^'"]+)['"]"""
 _MANIFEST_KEYWORD: str = 'manifestId'
 
 # IIIF size syntax: ``/full/full/0/`` is the legacy "give me everything"
 # template baked into the manifest. We rewrite it to one of the size
 # variants the SAN server still serves.
 _FULL_SIZE_TEMPLATE: str = '/full/full/0/'
+
+# Metadata labels we expect in every Antenati IIIF manifest.
+META_CONTEXT: str = 'Contesto archivistico'
+META_TITLE: str = 'Titolo'
+META_TYPOLOGY: str = 'Tipologia'
 
 
 def get_archive_id_from_url(url: str) -> str:
@@ -41,7 +49,7 @@ def get_archive_id_from_url(url: str) -> str:
     """
     numbers = findall(r'(\d+)', url)
     if len(numbers) < 2:
-        raise RuntimeError(f'Cannot get archive ID from {url}')
+        raise ManifestError(f'Cannot get archive ID from {url}')
     return numbers[1]
 
 
@@ -61,10 +69,10 @@ def parse_manifest_url_from_html(html: str, source_url: str) -> str:
         None,
     )
     if not manifest_line:
-        raise RuntimeError(f'No IIIF manifest found at {source_url}')
+        raise ManifestError(f'No IIIF manifest found at {source_url}')
     match = search(_MANIFEST_URL_PATTERN, manifest_line)
     if not match:
-        raise RuntimeError(f'Invalid IIIF manifest line found at {source_url}')
+        raise ManifestError(f'Invalid IIIF manifest line found at {source_url}')
     return match.group(1)
 
 
@@ -74,24 +82,36 @@ def get_metadata_value(manifest: dict[str, Any], label: str) -> str:
     The IIIF manifest metadata is a list of ``{label, value}`` dicts.
     """
     try:
-        return next(i['value'] for i in manifest['metadata'] if i['label'] == label)
+        entries = manifest['metadata']
+    except KeyError as exc:
+        raise ManifestError("Manifest has no 'metadata' field") from exc
+    try:
+        return next(i['value'] for i in entries if i['label'] == label)
     except StopIteration as exc:
-        raise RuntimeError(f'Cannot get {label} from manifest') from exc
+        raise ManifestError(f'Cannot get {label} from manifest') from exc
 
 
 def slice_canvases(manifest: dict[str, Any], first: int, last: int | None) -> list[dict[str, Any]]:
-    """Return ``manifest['sequences'][0]['canvases'][first:last]``.
+    """Return the canvases of the manifest sliced by ``first:last``.
 
-    Encapsulating this single index access keeps the assumption (single
-    sequence at index 0) in one place; a future PR will replace it with a
-    defensive lookup that raises a typed ``ManifestError`` instead.
+    Raises :class:`ManifestError` if the manifest is missing the expected
+    ``sequences[0].canvases`` path or that path contains nothing.
     """
-    return manifest['sequences'][0]['canvases'][first:last]
+    try:
+        canvases = manifest['sequences'][0]['canvases']
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ManifestError("Manifest has no 'sequences[0].canvases' field") from exc
+    if not canvases:
+        raise ManifestError('Manifest contains no canvases')
+    return canvases[first:last]
 
 
 def image_url_for_canvas(canvas: dict[str, Any]) -> str:
     """Return the image URL declared by an IIIF canvas."""
-    return canvas['images'][0]['resource']['@id']
+    try:
+        return canvas['images'][0]['resource']['@id']
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ManifestError("Canvas has no 'images[0].resource.@id' field") from exc
 
 
 def manipulate_image_url(url: str, size: int) -> str:

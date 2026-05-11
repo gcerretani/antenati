@@ -1,27 +1,36 @@
 """HTTP plumbing for the Portale Antenati downloader.
 
-Exposes a single small surface that ``antenati.AntenatiDownloader`` (and any
-future module) can lean on without re-implementing the SAN-server quirks:
+Exposes a single small surface that the rest of the package leans on
+without re-implementing the SAN-server quirks:
 
 - :func:`build_session` returns a :class:`requests.Session` preconfigured
-  with the headers required by the SAN reverse proxy.
-- :func:`fetch` performs a ``GET`` and turns the AWS WAF challenge response
-  (HTTP 202 with ``x-amzn-waf-action: challenge``) into a clean
-  :class:`RuntimeError`.
-- :func:`get_content_type` / :func:`get_content_charset` parse a response's
-  ``Content-Type`` header.
+  with the browser-like headers required by the SAN reverse proxy and an
+  ``urllib3.util.Retry`` adapter that transparently retries on transient
+  5xx and rate-limit responses.
+- :func:`fetch` performs a ``GET`` and turns the AWS WAF challenge
+  response (HTTP 202 with ``x-amzn-waf-action: challenge``) into a typed
+  :class:`antenati_errors.WafChallengeError`.
+- :func:`get_content_type` / :func:`get_content_charset` parse a
+  response's ``Content-Type`` header.
 
-This module is intentionally side-effect free at import time: it only
-declares helpers. Retry policies and structured logging will be added in a
-later refactor step.
+The module is side-effect free at import time except for module-level
+logger configuration: nothing is logged unless the application configures
+the root logger (see :mod:`antenati`'s ``--verbose`` flag).
 """
 
 from __future__ import annotations
 
+import logging
 from email.message import Message
 
 from requests import Response, Session
+from requests.adapters import HTTPAdapter
 from requests.utils import default_headers
+from urllib3.util.retry import Retry
+
+from antenati_errors import WafChallengeError
+
+logger = logging.getLogger(__name__)
 
 # These are observable behaviours of the SAN server; pulling them into
 # named constants makes the WAF detection explicit and lets tests assert
@@ -29,6 +38,14 @@ from requests.utils import default_headers
 WAF_CHALLENGE_STATUS: int = 202
 WAF_CHALLENGE_HEADER: str = 'x-amzn-waf-action'
 WAF_CHALLENGE_VALUE: str = 'challenge'
+
+# Retry policy applied to every Session built by :func:`build_session`.
+# These are the transient statuses the SAN server is known to return when
+# overloaded; they get retried with exponential backoff before the caller
+# sees an HTTPError. Tuned conservatively to avoid hammering the server.
+RETRY_TOTAL: int = 5
+RETRY_BACKOFF_FACTOR: float = 0.5
+RETRYABLE_STATUSES: tuple[int, ...] = (429, 500, 502, 503, 504)
 
 # Mimic a current Edge-on-Windows fingerprint. The SAN reverse proxy 403s
 # requests that look automated, so this header is part of the contract.
@@ -44,10 +61,24 @@ def _http_headers():
     return headers
 
 
+def _retry_policy() -> Retry:
+    """Return the urllib3 Retry policy mounted on every Session."""
+    return Retry(
+        total=RETRY_TOTAL,
+        backoff_factor=RETRY_BACKOFF_FACTOR,
+        status_forcelist=list(RETRYABLE_STATUSES),
+        allowed_methods=frozenset(['GET']),
+        raise_on_status=False,
+    )
+
+
 def build_session() -> Session:
     """Return a Session preconfigured for Portale Antenati requests."""
     session = Session()
     session.headers = _http_headers()
+    adapter = HTTPAdapter(max_retries=_retry_policy())
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
     return session
 
 
@@ -57,17 +88,20 @@ def fetch(session: Session, url: str) -> Response:
     Raises
     ------
     requests.HTTPError
-        If the server returned a 4xx/5xx status.
-    RuntimeError
+        If the server returned a 4xx/5xx status (after retries have been
+        exhausted for retryable statuses).
+    WafChallengeError
         If the server returned an AWS WAF challenge (HTTP 202 with the
         ``x-amzn-waf-action: challenge`` header). There is currently no
         bypass; surfacing this as a distinct error helps callers diagnose
         the problem without parsing HTML.
     """
+    logger.debug('GET %s', url)
     reply = session.get(url)
     reply.raise_for_status()
     if reply.status_code == WAF_CHALLENGE_STATUS and reply.headers.get(WAF_CHALLENGE_HEADER) == WAF_CHALLENGE_VALUE:
-        raise RuntimeError(f'{reply.url}: AWS WAF challenge cannot be bypassed. See https://github.com/gcerretani/antenati/issues/25 for details.')
+        logger.warning('WAF challenge received from %s', reply.url)
+        raise WafChallengeError(f'{reply.url}: AWS WAF challenge cannot be bypassed. See https://github.com/gcerretani/antenati/issues/25 for details.')
     return reply
 
 

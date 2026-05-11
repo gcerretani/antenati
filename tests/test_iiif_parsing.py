@@ -15,6 +15,7 @@ import antenati
 import antenati_http
 import antenati_iiif
 from antenati import AntenatiDownloader
+from antenati_errors import ManifestError, WafChallengeError
 from tests.conftest import ARCHIVE_ID, GALLERY_URL, MANIFEST_URL
 
 
@@ -27,12 +28,12 @@ def test_archive_id_helper_returns_second_integer() -> None:
 
 
 def test_archive_id_helper_raises_when_url_lacks_two_numbers() -> None:
-    with pytest.raises(RuntimeError, match='Cannot get archive ID'):
+    with pytest.raises(ManifestError, match='Cannot get archive ID'):
         antenati_iiif.get_archive_id_from_url('https://antenati.cultura.gov.it/no-numbers/')
 
 
 def test_constructor_raises_when_url_lacks_two_numbers(mocked_http) -> None:
-    with pytest.raises(RuntimeError, match='Cannot get archive ID'):
+    with pytest.raises(ManifestError, match='Cannot get archive ID'):
         AntenatiDownloader('https://antenati.cultura.gov.it/no-numbers/', 0, None)
 
 
@@ -62,8 +63,24 @@ def test_parse_manifest_url_from_html_extracts_quoted_url() -> None:
 
 
 def test_parse_manifest_url_no_keyword_raises() -> None:
-    with pytest.raises(RuntimeError, match='No IIIF manifest found'):
+    with pytest.raises(ManifestError, match='No IIIF manifest found'):
         antenati_iiif.parse_manifest_url_from_html('<html>nothing here</html>', 'src')
+
+
+@pytest.mark.parametrize(
+    'html',
+    [
+        # Single quotes around a URL with underscores and a query string.
+        "<script>var manifestId = 'https://iiif.example.org/ark:/12657/an_ua19944535/manifest?v=2';</script>",
+        # Double quotes.
+        '<script>var manifestId = "https://iiif.example.org/manifest";</script>',
+    ],
+)
+def test_parse_manifest_url_accepts_modern_url_shapes(html: str) -> None:
+    # Locks the post-hardening behaviour: the legacy regex rejected
+    # underscores and query strings, the new one accepts them.
+    result = antenati_iiif.parse_manifest_url_from_html(html, 'src')
+    assert result.startswith('https://')
 
 
 def test_constructor_raises_when_html_lacks_manifest(gallery_html: str) -> None:
@@ -76,14 +93,13 @@ def test_constructor_raises_when_html_lacks_manifest(gallery_html: str) -> None:
             status=200,
             content_type='text/html; charset=utf-8',
         )
-        with pytest.raises(RuntimeError, match='No IIIF manifest found'):
+        with pytest.raises(ManifestError, match='No IIIF manifest found'):
             AntenatiDownloader(GALLERY_URL, 0, None)
 
 
 def test_constructor_raises_on_invalid_manifest_line() -> None:
-    # Locks in the *current* (fragile) behaviour: ``manifestId`` keyword
-    # present but no quoted URL eventually raises. The exact exception type
-    # will become more specific in a later hardening PR.
+    # The ``manifestId`` keyword is present but there is no quoted URL on
+    # the line: parsing must raise a typed ManifestError.
     bad_html = '<script>var manifestId = noQuotesHere;</script>'
     with responses.RequestsMock() as rsps:
         rsps.add(
@@ -93,7 +109,7 @@ def test_constructor_raises_on_invalid_manifest_line() -> None:
             status=200,
             content_type='text/html; charset=utf-8',
         )
-        with pytest.raises(Exception):  # noqa: B017 - locks current behaviour
+        with pytest.raises(ManifestError, match='Invalid IIIF manifest line'):
             AntenatiDownloader(GALLERY_URL, 0, None)
 
 
@@ -107,7 +123,7 @@ def test_waf_challenge_is_detected() -> None:
             headers={antenati_http.WAF_CHALLENGE_HEADER: antenati_http.WAF_CHALLENGE_VALUE},
             content_type='text/html; charset=utf-8',
         )
-        with pytest.raises(RuntimeError, match='AWS WAF challenge'):
+        with pytest.raises(WafChallengeError, match='AWS WAF challenge'):
             AntenatiDownloader(GALLERY_URL, 0, None)
 
 
