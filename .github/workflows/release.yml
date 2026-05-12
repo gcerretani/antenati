@@ -36,7 +36,7 @@ jobs:
         pip install pyinstaller
 
     - name: Build standalone GUI binary
-      run: pyinstaller --windowed --onefile antenati_gui.py
+      run: pyinstaller --windowed --onefile --name antenati_gui src/antenati/gui/__main__.py
 
     - name: Upload artifact for Windows
       if: runner.os == 'Windows'

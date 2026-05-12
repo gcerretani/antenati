@@ -43,7 +43,7 @@ jobs:
       run: ruff format --check .
 
     - name: Mypy
-      run: mypy src/antenati antenati_gui.py
+      run: mypy src/antenati
 
   test:
     name: Offline tests (${{ matrix.python-version }} / ${{ matrix.os }})
