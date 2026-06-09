@@ -41,7 +41,7 @@ def main() -> None:
         epilog=__copyright__,
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page')
+    parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page or of its IIIF manifest')
     parser.add_argument(
         '-s',
         '--size',
@@ -70,6 +70,12 @@ def main() -> None:
         default=None,
         help='first image NOT to download',
     )
+    parser.add_argument(
+        '-d',
+        '--descriptive-names',
+        action='store_true',
+        help='include the archive and image IDs in the saved file names',
+    )
     parser.add_argument('-v', '--version', action='version', version=__version__)
     parser.add_argument(
         '--verbose',
@@ -80,7 +86,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _configure_logging(args.verbose)
-    downloader = Downloader(args.url, args.first, args.last)
+    downloader = Downloader(args.url, args.first, args.last, descriptive_names=args.descriptive_names)
     downloader.print_gallery_info()
     downloader.check_dir()
     gallery_size = run_cli(downloader, args.nthreads, args.size)

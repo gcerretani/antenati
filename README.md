@@ -51,3 +51,13 @@ Then, copy the link to the first page, and call the script with that link as arg
     antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
 
 The results will be placed in a folder named *archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-nati-19944549*.
+
+To include the archive and image IDs in the saved file names (e.g. `pag-1+an_ua19944535+w9DWR8x.jpg` instead of `pag-1.jpg`), add the `-d`/`--descriptive-names` flag.
+
+## AWS WAF challenge
+
+Outside Italy, the Portale Antenati gallery pages are often protected by an AWS WAF challenge that this tool cannot solve, and the download fails with an *AWS WAF challenge cannot be bypassed* error (see [#25](https://github.com/gcerretani/antenati/issues/25)). The IIIF manifest and the images themselves are **not** behind the WAF, so you can work around it:
+
+1. open the gallery page in your browser;
+2. copy the **IIIF manifest** link at the bottom of the left side panel (it looks like `https://dam-antenati.cultura.gov.it/antenati/containers/.../manifest`);
+3. pass that URL to the tool (both CLI and GUI) instead of the gallery page URL.

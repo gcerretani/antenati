@@ -161,3 +161,49 @@ def test_default_thread_count_constant() -> None:
 
 def test_default_size_constant() -> None:
     assert antenati.DEFAULT_SIZE == 0
+
+
+def test_is_manifest_url_detects_manifest_paths() -> None:
+    assert antenati_iiif.is_manifest_url('https://dam-antenati.cultura.gov.it/antenati/containers/0ADVMr3/manifest')
+    assert antenati_iiif.is_manifest_url(MANIFEST_URL)
+    assert antenati_iiif.is_manifest_url(MANIFEST_URL + '/')
+    assert not antenati_iiif.is_manifest_url(GALLERY_URL)
+
+
+def test_archive_id_is_recovered_from_canvases(manifest_dict: dict) -> None:
+    canvases = manifest_dict['sequences'][0]['canvases']
+    assert antenati_iiif.get_archive_id_from_canvases(canvases) == ARCHIVE_ID
+
+
+def test_archive_id_from_canvases_raises_on_missing_id() -> None:
+    with pytest.raises(ManifestError, match="Canvas has no '@id'"):
+        antenati_iiif.get_archive_id_from_canvases([{'label': '0001'}])
+
+
+def test_ark_id_is_extracted_from_gallery_url() -> None:
+    assert antenati_iiif.get_ark_id_from_url(GALLERY_URL) == f'an_ua{ARCHIVE_ID}'
+
+
+def test_ark_id_is_none_when_absent() -> None:
+    assert antenati_iiif.get_ark_id_from_url(MANIFEST_URL) is None
+
+
+def test_image_id_is_extracted_from_iiif_image_url() -> None:
+    url = 'https://iiif-antenati.cultura.gov.it/iiif/2/5gGAbBp/full/full/0/default.jpg'
+    assert antenati_iiif.get_image_id_from_url(url) == '5gGAbBp'
+
+
+def test_image_id_raises_on_short_path() -> None:
+    with pytest.raises(ManifestError, match='Cannot get image ID'):
+        antenati_iiif.get_image_id_from_url('https://example.org/too/short')
+
+
+def test_downloader_accepts_manifest_url_directly(mocked_http) -> None:
+    # The gallery page is never fetched: only the manifest URL is hit.
+    # This is the workaround for galleries behind the AWS WAF challenge
+    # (https://github.com/gcerretani/antenati/issues/25).
+    dl = Downloader(MANIFEST_URL, first=0, last=None)
+    assert dl.archive_id == ARCHIVE_ID
+    assert dl.gallery_length == 3
+    requested = [call.request.url for call in mocked_http.calls]
+    assert requested == [MANIFEST_URL]

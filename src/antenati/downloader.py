@@ -56,32 +56,56 @@ class Downloader:
 
     url: str
     session: Session
-    archive_id: str
+    descriptive_names: bool
     manifest: dict[str, Any]
     canvases: list[dict[str, Any]]
+    archive_id: str
+    ark_id: str
     dirname: Path
     gallery_length: int
 
-    def __init__(self, url: str, first: int, last: int | None):
+    def __init__(self, url: str, first: int, last: int | None, descriptive_names: bool = False):
         self.url = url
         self.session = http.build_session()
-        self.archive_id = iiif.get_archive_id_from_url(url)
-        logger.info('Loading manifest for archive %s', self.archive_id)
+        self.descriptive_names = descriptive_names
+        # A gallery URL embeds the archive ID: extract it up front so a
+        # malformed URL fails before any network round-trip. A manifest
+        # URL does not embed it; in that case it is recovered after the
+        # fetch from the first canvas @id, the only place the manifest
+        # repeats it.
+        archive_id = None if iiif.is_manifest_url(url) else iiif.get_archive_id_from_url(url)
+        logger.info('Loading manifest from %s', url)
         self.manifest = self.__load_manifest()
         self.canvases = iiif.slice_canvases(self.manifest, first, last)
+        self.archive_id = archive_id if archive_id is not None else iiif.get_archive_id_from_canvases(self.canvases)
+        self.ark_id = self.__resolve_ark_id()
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
         logger.info('Manifest loaded: %d canvases selected', self.gallery_length)
 
     def __load_manifest(self) -> dict[str, Any]:
-        gallery_reply = http.fetch(self.session, self.url)
-        gallery_charset = http.get_content_charset(gallery_reply) or 'utf-8'
-        gallery_html = gallery_reply.content.decode(gallery_charset)
-        manifest_url = iiif.parse_manifest_url_from_html(gallery_html, self.url)
+        if iiif.is_manifest_url(self.url):
+            # The manifest endpoint is not behind the AWS WAF, so a user
+            # who gets a challenge on the gallery page can copy the "IIIF
+            # manifest" link from it and pass that URL directly (issue #25).
+            manifest_url = self.url
+        else:
+            gallery_reply = http.fetch(self.session, self.url)
+            gallery_charset = http.get_content_charset(gallery_reply) or 'utf-8'
+            gallery_html = gallery_reply.content.decode(gallery_charset)
+            manifest_url = iiif.parse_manifest_url_from_html(gallery_html, self.url)
         logger.debug('Manifest URL: %s', manifest_url)
         manifest_reply = http.fetch(self.session, manifest_url)
         manifest_charset = http.get_content_charset(manifest_reply) or 'utf-8'
         return loads(manifest_reply.content.decode(manifest_charset))
+
+    def __resolve_ark_id(self) -> str:
+        first_canvas_url = str(self.canvases[0].get('@id', ''))
+        for candidate in (self.url, first_canvas_url):
+            ark = iiif.get_ark_id_from_url(candidate)
+            if ark:
+                return ark
+        return self.archive_id
 
     def __generate_dirname(self) -> Path:
         context = iiif.get_metadata_value(self.manifest, iiif.META_CONTEXT)
@@ -116,13 +140,16 @@ class Downloader:
         label = slugify(canvas['label'])
         try:
             image_url = iiif.image_url_for_canvas(canvas)
+            stem = label
+            if self.descriptive_names:
+                stem = f'{label}+{self.ark_id}+{iiif.get_image_id_from_url(image_url)}'
             url = iiif.manipulate_image_url(image_url, size)
             http_reply = http.fetch(self.session, url)
             content_type = http.get_content_type(http_reply)
             extension = guess_extension(content_type)
             if not extension:
                 raise RuntimeError(f'{url}: Unable to guess extension "{content_type}"')
-            filename = self.dirname / f'{label}{extension}'
+            filename = self.dirname / f'{stem}{extension}'
             with open(filename, 'wb') as img_file:
                 img_file.write(http_reply.content)
             return len(http_reply.content)

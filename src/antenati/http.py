@@ -92,16 +92,21 @@ def fetch(session: Session, url: str) -> Response:
         exhausted for retryable statuses).
     WafChallengeError
         If the server returned an AWS WAF challenge (HTTP 202 with the
-        ``x-amzn-waf-action: challenge`` header). There is currently no
-        bypass; surfacing this as a distinct error helps callers diagnose
-        the problem without parsing HTML.
+        ``x-amzn-waf-action: challenge`` header). Only the gallery pages
+        are behind the WAF: the error message points the user at the
+        manifest-URL workaround.
     """
     logger.debug('GET %s', url)
     reply = session.get(url)
     reply.raise_for_status()
     if reply.status_code == WAF_CHALLENGE_STATUS and reply.headers.get(WAF_CHALLENGE_HEADER) == WAF_CHALLENGE_VALUE:
         logger.warning('WAF challenge received from %s', reply.url)
-        raise WafChallengeError(f'{reply.url}: AWS WAF challenge cannot be bypassed. See https://github.com/gcerretani/antenati/issues/25 for details.')
+        raise WafChallengeError(
+            f'{reply.url}: AWS WAF challenge cannot be bypassed. '
+            'Workaround: open the gallery page in a browser, copy the "IIIF manifest" link '
+            'at the bottom of the left panel and pass that URL to this tool instead. '
+            'See https://github.com/gcerretani/antenati/issues/25 for details.'
+        )
     return reply
 
 
