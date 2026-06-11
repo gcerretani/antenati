@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         # hatch-vcs derives the version from git tags.
         fetch-depth: 0
@@ -40,14 +40,14 @@ jobs:
 
     - name: Upload artifact for Windows
       if: runner.os == 'Windows'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: antenati_gui_windows.exe
         path: dist/antenati_gui.exe
 
     - name: Upload artifact for macOS and Ubuntu
       if: runner.os != 'Windows'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: antenati_gui_${{ matrix.runs-on }}
         path: dist/antenati_gui
@@ -59,7 +59,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -84,7 +84,7 @@ jobs:
         echo "Built antenati $version"
 
     - name: Upload distribution artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: dist
         path: dist/*
@@ -104,7 +104,7 @@ jobs:
       id-token: write
     steps:
     - name: Download distribution artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: dist
         path: dist
