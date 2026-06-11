@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from re import findall, search
 from typing import Any
+from urllib.parse import urlsplit
 
 from antenati.errors import ManifestError
 
@@ -37,6 +38,18 @@ META_TITLE: str = 'Titolo'
 META_TYPOLOGY: str = 'Tipologia'
 
 
+def is_manifest_url(url: str) -> bool:
+    """Return True when ``url`` points directly to a IIIF manifest.
+
+    Every Portale Antenati gallery page links its manifest ("IIIF
+    manifest", at the bottom of the left panel). Unlike the gallery page
+    itself, the manifest endpoint is not protected by the AWS WAF, so
+    accepting it as input gives users a challenge-free entry point
+    (https://github.com/gcerretani/antenati/issues/25).
+    """
+    return urlsplit(url).path.rstrip('/').endswith('/manifest')
+
+
 def get_archive_id_from_url(url: str) -> str:
     """Return the archive ID embedded in a Portale Antenati gallery URL.
 
@@ -51,6 +64,46 @@ def get_archive_id_from_url(url: str) -> str:
     if len(numbers) < 2:
         raise ManifestError(f'Cannot get archive ID from {url}')
     return numbers[1]
+
+
+def get_archive_id_from_canvases(canvases: list[dict[str, Any]]) -> str:
+    """Return the archive ID from the first canvas ``@id`` URL.
+
+    A manifest URL does not embed the archive ID, but every canvas
+    ``@id`` does; this is the fallback used when the user provides a
+    manifest URL directly instead of a gallery URL.
+    """
+    try:
+        canonical_url = canvases[0]['@id']
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ManifestError("Canvas has no '@id' field") from exc
+    return get_archive_id_from_url(canonical_url)
+
+
+def get_ark_id_from_url(url: str) -> str | None:
+    """Return the ``an_...`` ark token embedded in a URL, if any.
+
+    Example: ``https://antenati.cultura.gov.it/ark:/12657/an_ua2978553/5gGAbBp``
+    yields ``an_ua2978553``.
+    """
+    match = search(r'an_\w+', url)
+    return match.group(0) if match else None
+
+
+def get_image_id_from_url(url: str) -> str:
+    """Return the IIIF image identifier from an image URL.
+
+    IIIF Image API URLs have the shape
+    ``{server}{/prefix}/{identifier}/{region}/{size}/{rotation}/{quality}.{format}``,
+    so the identifier is always the fifth path segment from the end::
+
+        https://iiif-antenati.cultura.gov.it/iiif/2/5gGAbBp/full/full/0/default.jpg
+                                                    ^^^^^^^
+    """
+    parts = urlsplit(url).path.split('/')
+    if len(parts) < 5:
+        raise ManifestError(f'Cannot get image ID from {url}')
+    return parts[-5]
 
 
 def parse_manifest_url_from_html(html: str, source_url: str) -> str:

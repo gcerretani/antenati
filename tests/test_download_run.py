@@ -16,7 +16,7 @@ import responses
 import antenati
 from antenati import Downloader, ProgressBar
 from antenati import cli as antenati_cli
-from tests.conftest import GALLERY_URL, TINY_JPEG
+from tests.conftest import GALLERY_URL, MANIFEST_URL, TINY_JPEG
 
 
 def _null_progress() -> ProgressBar:
@@ -195,3 +195,40 @@ def test_run_honours_preset_cancel_event(mocked_http, downloader_in_tmp: Downloa
     cancel.set()
     total = downloader_in_tmp.run(n_workers=1, size=0, progress=_null_progress(), cancel=cancel)
     assert total == 0
+
+
+def test_run_descriptive_names_embed_ark_and_image_ids(mocked_http, tmp_path: Path) -> None:
+    dl = Downloader(GALLERY_URL, first=0, last=None, descriptive_names=True)
+    dl.check_dir(parentdir=str(tmp_path), interactive=False)
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    dl.run(n_workers=2, size=0, progress=_null_progress())
+    files = sorted(p.name for p in dl.dirname.iterdir())
+    assert files == [
+        '0001+an_ua19944535+img1.jpg',
+        '0002+an_ua19944535+img2.jpg',
+        '0003+an_ua19944535+img3.jpg',
+    ]
+
+
+def test_run_from_manifest_url_downloads_all_images(mocked_http, tmp_path: Path) -> None:
+    dl = Downloader(MANIFEST_URL, first=0, last=None)
+    dl.check_dir(parentdir=str(tmp_path), interactive=False)
+    for label in ('0001', '0002', '0003'):
+        mocked_http.add(
+            responses.GET,
+            _image_url(label, 0),
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    total = dl.run(n_workers=2, size=0, progress=_null_progress())
+    assert total == 3 * len(TINY_JPEG)
+    files = sorted(p.name for p in dl.dirname.iterdir())
+    assert files == ['0001.jpg', '0002.jpg', '0003.jpg']

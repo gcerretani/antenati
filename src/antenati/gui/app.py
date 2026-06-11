@@ -70,7 +70,7 @@ class App:
         entry_frame = ttk.Frame(self._root)
         entry_frame.pack(side=tk.TOP, fill=tk.X)
 
-        tk.Label(entry_frame, text='Archive URL').grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
+        tk.Label(entry_frame, text='Archive or manifest URL').grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
         ttk.Entry(entry_frame, textvariable=self._url, width=100).grid(row=0, column=1, padx=10, pady=5, columnspan=3, sticky=tk.EW)
 
         options = ttk.LabelFrame(entry_frame, text='Options')
