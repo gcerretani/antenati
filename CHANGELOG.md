@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Pyinstaller artifacts now built with Python 3.12
 - Support for multiple platforms:
-  - Ubuntu 22.04 (arm64)
+  - Ubuntu 22.04 (x86_64)
   - macOS 13 (Intel)
   - macOS 14 (arm64)
   - Windows 2022
