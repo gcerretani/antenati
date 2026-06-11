@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [6.0] - 2026-06-11
+
+### Added
+- Comprehensive test suite (15+ test modules) covering IIIF parsing, HTTP handling, download orchestration, filesystem operations, and end-to-end flows with mocked HTTP
+- Typed exception hierarchy (`ManifestError`, `WafChallengeError`, `ThreadError`) replacing generic `RuntimeError`
+- `--verbose` / `-vv` flags to control log verbosity (WARNING → INFO → DEBUG)
+- Automatic exponential backoff retry policy for transient 5xx and rate-limit (429) responses
+
+### Changed
+- Refactored monolithic `antenati.py` into a modular package structure under `src/antenati/`:
+  - `downloader.py`: core `Downloader` class with thread-pool orchestration
+  - `iiif.py`: pure IIIF manifest parsing helpers (no I/O, offline-testable)
+  - `http.py`: HTTP session building and request handling
+  - `errors.py`: typed exception hierarchy
+  - `cli.py`: CLI entry point with logging configuration
+- CI/CD pipeline updated with linting (ruff), type checking (mypy), and offline test runs
+
 ## [5.0] - 2025-11-01
 
 ### Added

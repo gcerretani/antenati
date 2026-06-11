@@ -1,0 +1,38 @@
+name: Live download
+
+on:
+  # Run on demand from the Actions tab.
+  workflow_dispatch:
+  # Daily canary so we hear early if SAN changes the gallery shape.
+  schedule:
+    - cron: '23 5 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Live download against Portale Antenati
+    runs-on: ubuntu-24.04
+    # We do NOT block PRs on this job: the Portale is intermittently slow
+    # or under WAF challenge, which would cause unrelated PRs to fail.
+    # CI failures show up as a red badge on the Actions tab instead.
+    continue-on-error: true
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - name: Install package + test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Run integration tests against the live API
+      run: pytest -m integration -v
