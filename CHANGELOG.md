@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic exponential backoff retry policy for transient 5xx and rate-limit (429) responses
 
 ### Changed
+- Dropped Intel macOS (macOS 13) binary artifacts: GitHub Actions no longer provides Intel macOS runners; only Apple Silicon (macOS 14, arm64) is now built
 - Refactored monolithic `antenati.py` into a modular package structure under `src/antenati/`:
   - `downloader.py`: core `Downloader` class with thread-pool orchestration
   - `iiif.py`: pure IIIF manifest parsing helpers (no I/O, offline-testable)
@@ -61,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Pyinstaller artifacts now built with Python 3.12
 - Support for multiple platforms:
-  - Ubuntu 22.04 (arm64)
+  - Ubuntu 22.04 (x86_64)
   - macOS 13 (Intel)
   - macOS 14 (arm64)
   - Windows 2022
