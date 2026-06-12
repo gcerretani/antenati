@@ -111,3 +111,47 @@ jobs:
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+
+  create-github-release:
+    name: Create GitHub release
+    needs: [pyinstaller, build-distribution]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Download GUI artifacts
+      uses: actions/download-artifact@v8
+      with:
+        path: artifacts
+        pattern: antenati_gui_*
+
+    - name: Package release assets
+      run: |
+        mkdir -p release-assets
+        zip -j release-assets/antenati_gui_windows.exe.zip \
+            artifacts/antenati_gui_windows.exe/antenati_gui.exe
+        zip -j release-assets/antenati_gui_macos-14.zip \
+            artifacts/antenati_gui_macos-14/antenati_gui
+        zip -j release-assets/antenati_gui_ubuntu-22.04.zip \
+            artifacts/antenati_gui_ubuntu-22.04/antenati_gui
+
+    - name: Extract release notes from CHANGELOG
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        awk '/^## \['"$version"'\]/{found=1; next} /^## \[/{if(found) exit} found{print}' \
+            CHANGELOG.md > release-notes.md
+
+    - name: Create GitHub release
+      run: |
+        gh release create "$GITHUB_REF_NAME" \
+          --title "$GITHUB_REF_NAME" \
+          --notes-file release-notes.md \
+          release-assets/antenati_gui_windows.exe.zip \
+          release-assets/antenati_gui_macos-14.zip \
+          release-assets/antenati_gui_ubuntu-22.04.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
