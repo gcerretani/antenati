@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tkinter GUI package for the Portale Antenati downloader.
 
 The Tk import is deferred to :func:`main` so that importing the worker

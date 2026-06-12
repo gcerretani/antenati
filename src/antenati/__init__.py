@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """antenati: a tool to download data from the Portale Antenati."""
 
 from __future__ import annotations
@@ -7,7 +9,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 __author__ = 'Giovanni Cerretani'
 __copyright__ = 'Copyright (c) 2022, Giovanni Cerretani'
-__license__ = 'MIT License'
+__license__ = 'GPL-3.0-or-later'
 __contact__ = 'https://gcerretani.github.io/antenati/'
 
 try:

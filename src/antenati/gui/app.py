@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tkinter GUI for the Portale Antenati downloader."""
 
 from __future__ import annotations

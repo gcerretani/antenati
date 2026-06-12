@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Pure IIIF helpers for the Portale Antenati gallery format.
 
 All functions in this module work on plain Python data (strings, dicts).
