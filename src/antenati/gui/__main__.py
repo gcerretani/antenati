@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Module entry point for the Tkinter GUI.
 
 Enables ``python -m antenati.gui`` and serves as the PyInstaller target,

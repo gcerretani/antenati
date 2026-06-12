@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [6.1] - 2026-06-12
+
+### Added
+- Automated GitHub release creation in CI/CD pipeline: the release workflow now packages the PyInstaller binaries as zip assets and publishes the GitHub release automatically on tag push
+
+### Changed
+- Relicensed from MIT to GPL-3.0-or-later; all source files carry SPDX-FileCopyrightText / SPDX-License-Identifier headers
+- Rewrote README for PyPI-first presentation: `pip install antenati` as the primary installation method, highlights section, CLI options table, fixed screenshot URL for PyPI rendering
+- Removed `PRINCIPIANTI.md` (superseded by the updated README)
+
 ## [6.0] - 2026-06-11
 
 ### Added
