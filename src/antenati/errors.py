@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Exception hierarchy for the antenati downloader.
 
 A single base ``AntenatiError`` lets callers catch any tool-specific

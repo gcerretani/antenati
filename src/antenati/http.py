@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """HTTP plumbing for the Portale Antenati downloader.
 
 Exposes a single small surface that the rest of the package leans on

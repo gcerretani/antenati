@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2018 Giovanni Cerretani
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Background download worker for the Tk GUI.
 
 The worker runs the entire ``Downloader`` lifecycle (construction, manifest
