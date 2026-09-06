@@ -211,8 +211,7 @@ class Downloader:
 
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             future_img = {
-                executor.submit(self.__thread_main, canvas, stem, size, cancel)
-                for canvas, stem in zip(self.canvases, self._download_stems, strict=True)
+                executor.submit(self.__thread_main, canvas, stem, size, cancel) for canvas, stem in zip(self.canvases, self._download_stems, strict=True)
             }
             gallery_size = 0
             failed: list[tuple[str, str]] = []

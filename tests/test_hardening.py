@@ -37,12 +37,12 @@ def test_archive_id_is_not_confused_by_explicit_https_port() -> None:
 
 
 def test_manifest_parser_binds_url_to_manifest_id() -> None:
-    html = '''
+    html = """
     <script>
       const unrelated = "https://example.invalid/not-the-manifest";
       const manifestId = "https://iiif.example.org/archive/manifest";
     </script>
-    '''
+    """
     assert iiif.parse_manifest_url_from_html(html, 'https://antenati.example/gallery') == 'https://iiif.example.org/archive/manifest'
 
 
