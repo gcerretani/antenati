@@ -253,10 +253,7 @@ class App:
 
         resume = tkmsg.askyesnocancel(
             'Existing output',
-            'The destination already contains files.\n\n'
-            'Yes: resume and verify existing downloads (recommended)\n'
-            'No: choose another action\n'
-            'Cancel: stop',
+            'The destination already contains files.\n\nYes: resume and verify existing downloads (recommended)\nNo: choose another action\nCancel: stop',
         )
         if resume is None:
             return None
@@ -265,10 +262,7 @@ class App:
 
         overwrite = tkmsg.askyesnocancel(
             'Existing output',
-            'Overwrite planned files?\n\n'
-            'Yes: overwrite\n'
-            'No: skip verified files and refuse ambiguous files\n'
-            'Cancel: stop',
+            'Overwrite planned files?\n\nYes: overwrite\nNo: skip verified files and refuse ambiguous files\nCancel: stop',
         )
         if overwrite is None:
             return None
