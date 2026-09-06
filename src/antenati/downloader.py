@@ -65,7 +65,13 @@ class Downloader:
         self.ark_id = self.__resolve_ark_id()
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
-        self._download_stems = self.__build_unique_stems()
+
+        # Plan names against the complete gallery, then apply the same slice
+        # used for the canvases. This keeps collision suffixes stable even if
+        # the user downloads the same pages later through a different range.
+        all_canvases = iiif.slice_canvases(self.manifest, 0, None)
+        all_stems = self.__build_unique_stems(all_canvases)
+        self._download_stems = all_stems[first:last]
         logger.info('Manifest loaded: %d canvases selected', self.gallery_length)
 
     def __load_manifest(self) -> dict[str, Any]:
@@ -95,16 +101,17 @@ class Downloader:
         typology = iiif.get_metadata_value(self.manifest, iiif.META_TYPOLOGY)
         return Path(slugify(f'{context}-{year}-{typology}-{self.archive_id}'))
 
-    def __build_unique_stems(self) -> list[str]:
-        """Return stable, collision-free output stems for selected canvases.
+    def __build_unique_stems(self, canvases: list[dict[str, Any]] | None = None) -> list[str]:
+        """Return stable, collision-free output stems for canvases.
 
         Historical/default filenames remain unchanged unless two canvases
         would otherwise resolve to the same path. In that exceptional case
         only later duplicates receive ``-2``, ``-3`` ... suffixes.
         """
+        source_canvases = self.canvases if canvases is None else canvases
         used: set[str] = set()
         result: list[str] = []
-        for index, canvas in enumerate(self.canvases, start=1):
+        for index, canvas in enumerate(source_canvases, start=1):
             label = slugify(str(canvas.get('label', ''))) or f'image-{index}'
             base = label
             if self.descriptive_names:
