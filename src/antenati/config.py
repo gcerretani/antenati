@@ -22,7 +22,7 @@ class DownloadConfig:
     last: int | None = None
     n_workers: int = 2
     descriptive_names: bool = False
-    existing_policy: ExistingPolicy = ExistingPolicy.ERROR
+    existing_policy: ExistingPolicy = ExistingPolicy.ASK
     dry_run: bool = False
 
     def options(self) -> DownloadOptions:
