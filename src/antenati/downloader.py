@@ -3,14 +3,9 @@
 """Core download orchestration for the Portale Antenati.
 
 The downloader lifecycle is deliberately split into explicit phases:
-
-1. construct a :class:`Downloader` (configuration only; no network I/O),
-2. :meth:`Downloader.load` the source manifest,
-3. :meth:`Downloader.plan` the selected canvases and deterministic filenames,
-4. :meth:`Downloader.run` the resulting plan.
-
-Keeping construction side-effect free makes validation, preview and testing
-possible without accidentally touching the network or filesystem.
+construct configuration, load the manifest, build a deterministic plan, then
+execute it. Execution returns a structured :class:`DownloadReport` shared by
+CLI and GUI callers.
 """
 
 from __future__ import annotations
@@ -19,7 +14,7 @@ import logging
 import os
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from contextlib import suppress
 from dataclasses import dataclass
 from json import loads
@@ -72,13 +67,37 @@ class DownloadPlan:
         return len(self.items)
 
 
-class Downloader:
-    """Plan and execute a Portale Antenati gallery download.
+@dataclass(frozen=True)
+class PageFailure:
+    """Failure associated with one planned page."""
 
-    Construction stores configuration only. Accessing loaded properties such
-    as :attr:`manifest` remains backward compatible by loading lazily, while
-    new callers can use :meth:`load` and :meth:`plan` explicitly.
-    """
+    label: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class DownloadReport:
+    """Complete outcome of one execution attempt."""
+
+    expected: int
+    attempted: int
+    completed: int
+    skipped: int
+    failed: tuple[PageFailure, ...]
+    cancelled: bool
+    bytes_written: int
+
+    @property
+    def successful(self) -> bool:
+        return not self.cancelled and not self.failed and self.completed + self.skipped == self.expected
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.expected - self.completed - self.skipped - len(self.failed))
+
+
+class Downloader:
+    """Plan and execute a Portale Antenati gallery download."""
 
     def __init__(self, url: str, first: int, last: int | None, descriptive_names: bool = False):
         self.url = url
@@ -284,31 +303,50 @@ class Downloader:
                 with suppress(FileNotFoundError):
                     os.unlink(temp_name)
 
-    def run(self, n_workers: int, size: int, progress: ProgressBar, cancel: threading.Event | None = None) -> int:
-        """Execute the selected plan and return the number of bytes written."""
+    def run(self, n_workers: int, size: int, progress: ProgressBar, cancel: threading.Event | None = None) -> DownloadReport:
+        """Execute the selected plan and return a structured outcome report."""
         plan = self.plan(size)
         progress.set_total(plan.expected)
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any work was submitted')
-            return 0
+            return DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
+
+        attempted = 0
+        completed = 0
+        bytes_written = 0
+        failures: list[PageFailure] = []
+        cancelled = False
 
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             futures = {executor.submit(self._thread_main, item, cancel) for item in plan.items}
-            gallery_size = 0
-            failed: list[tuple[str, str]] = []
             for future in as_completed(futures):
                 if cancel is not None and cancel.is_set():
+                    cancelled = True
                     for pending in futures:
                         pending.cancel()
-                    logger.info('Download cancelled by caller')
-                    return gallery_size
+                if future.cancelled():
+                    continue
+                attempted += 1
                 progress.update()
                 try:
-                    gallery_size += future.result()
+                    written = future.result()
+                except CancelledError:
+                    cancelled = True
                 except ThreadError as ex:
-                    failed.append((ex.label, str(ex.__cause__)))
-            if failed:
-                msg = f'Failed to download {len(failed)} images:\n'
-                msg += '\n - '.join(f'{label}: {reason}' for label, reason in failed)
-                raise RuntimeError(msg)
-            return gallery_size
+                    failures.append(PageFailure(ex.label, str(ex.__cause__)))
+                else:
+                    if written > 0:
+                        completed += 1
+                        bytes_written += written
+                    elif cancel is not None and cancel.is_set():
+                        cancelled = True
+
+        return DownloadReport(
+            expected=plan.expected,
+            attempted=attempted,
+            completed=completed,
+            skipped=0,
+            failed=tuple(failures),
+            cancelled=cancelled,
+            bytes_written=bytes_written,
+        )

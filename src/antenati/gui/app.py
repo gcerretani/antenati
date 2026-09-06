@@ -118,7 +118,6 @@ class App:
 
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
-
         params = DownloadParams(url=url, parent_dir=path_value, size=self._size.get(), first=int(self._first.get()), last=last_val)
 
         self._progress = TkProgress(self._progress_bar)
@@ -139,10 +138,6 @@ class App:
                 self._handle_event(event)
         except queue.Empty:
             pass
-        # Do not use worker liveness as the completion signal.  The worker can
-        # enqueue Done/Failed and exit between the empty-queue check and the
-        # liveness check; polling until the terminal event is consumed closes
-        # that race.
         if not self._terminal_received:
             self._root.after(_POLL_INTERVAL_MS, self._drain_events)
 
@@ -156,11 +151,19 @@ class App:
         elif isinstance(event, Done):
             self._terminal_received = True
             self._set_running(False)
-            tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(event.total_bytes, True)}')
+            report = event.report
+            if report.successful:
+                tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(report.bytes_written, True)}')
+            else:
+                details = '\n'.join(f'{f.label}: {f.reason}' for f in report.failed)
+                tkmsg.showwarning(
+                    'Incomplete download',
+                    f'Completed {report.completed}/{report.expected}; failed {len(report.failed)}.\n{details}',
+                )
         elif isinstance(event, Cancelled):
             self._terminal_received = True
             self._set_running(False)
-            tkmsg.showinfo('Cancelled', 'Download cancelled.')
+            tkmsg.showinfo('Cancelled', f'Download cancelled after {event.report.completed}/{event.report.expected} pages.')
         elif isinstance(event, Failed):
             self._terminal_received = True
             self._set_running(False)
@@ -176,7 +179,6 @@ class App:
 
 
 def main() -> None:
-    """Launch the Tkinter GUI."""
     tk_root = tk.Tk()
 
     def _callback_exception(_type, ex: BaseException, _traceback):

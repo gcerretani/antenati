@@ -15,15 +15,16 @@ __contact__ = 'https://gcerretani.github.io/antenati/'
 try:
     __version__ = version(__name__)
 except PackageNotFoundError:
-    # The package is being executed from a source checkout that hasn't
-    # been `pip install`-ed; report a sentinel so tests can still
-    # assert the attribute exists without pretending to know the tag.
     __version__ = '0.0.0+local'
 
 from antenati.downloader import (
     DEFAULT_N_THREADS,
     DEFAULT_SIZE,
+    DownloadItem,
+    DownloadPlan,
+    DownloadReport,
     Downloader,
+    PageFailure,
     ProgressBar,
 )
 from antenati.errors import ThreadError
@@ -31,7 +32,11 @@ from antenati.errors import ThreadError
 __all__ = [
     'DEFAULT_N_THREADS',
     'DEFAULT_SIZE',
+    'DownloadItem',
+    'DownloadPlan',
+    'DownloadReport',
     'Downloader',
+    'PageFailure',
     'ProgressBar',
     'ThreadError',
     '__author__',
