@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import logging
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from pathlib import Path
+from urllib.parse import urlsplit
 
 from humanize import naturalsize
 from tqdm import tqdm
 
 from antenati import __copyright__, __version__
-from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, DownloadReport, Downloader, ProgressBar
+from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, DownloadItem, DownloadReport, Downloader, ProgressBar
 from antenati.validation import DownloadOptions
 
 
@@ -29,6 +31,26 @@ def run_cli(downloader: Downloader, n_workers: int, size: int) -> DownloadReport
     with tqdm(unit='img') as progress:
         progress_bar = ProgressBar(progress.reset, progress.update)  # type: ignore[arg-type]
         return downloader.run(n_workers, size, progress_bar)
+
+
+def _planned_filename(item: DownloadItem) -> str:
+    """Return the filename implied by the IIIF request URL without fetching it."""
+    suffix = Path(urlsplit(item.source_url).path).suffix.lower()
+    if suffix in {'.jpeg', '.jpe'}:
+        suffix = '.jpg'
+    if suffix not in {'.jpg', '.png', '.tif', '.tiff', '.webp'}:
+        suffix = '.img'
+    return f'{item.stem}{suffix}'
+
+
+def print_preview(downloader: Downloader, size: int) -> None:
+    """Print the exact planned canvases without creating files or fetching images."""
+    plan = downloader.plan(size)
+    print(f'Preview: {plan.expected} images -> {downloader.dirname}')
+    for index, item in enumerate(plan.items, start=1):
+        canvas_id = str(item.canvas.get('@id', ''))
+        label = str(item.canvas.get('label', ''))
+        print(f'{index:>5}  {_planned_filename(item)}  {label}  {canvas_id}  {item.source_url}')
 
 
 def _print_report(report: DownloadReport) -> None:
@@ -52,6 +74,7 @@ def main() -> None:
     parser.add_argument('-f', '--first', type=int, default=0, help='first image to download')
     parser.add_argument('-l', '--last', type=int, default=None, help='first image NOT to download')
     parser.add_argument('-d', '--descriptive-names', action='store_true', help='include the archive and image IDs in saved file names')
+    parser.add_argument('--dry-run', action='store_true', help='show the resolved download plan without downloading image bodies or writing files')
     parser.add_argument('-v', '--version', action='version', version=__version__)
     parser.add_argument('--verbose', action='count', default=0, help='increase logging verbosity (--verbose for INFO, twice for DEBUG)')
     args = parser.parse_args()
@@ -60,6 +83,9 @@ def main() -> None:
     _configure_logging(args.verbose)
     downloader = Downloader(args.url, options.first, options.last, descriptive_names=args.descriptive_names)
     downloader.load()
+    if args.dry_run:
+        print_preview(downloader, options.size)
+        return
     downloader.print_gallery_info()
     downloader.check_dir()
     report = run_cli(downloader, options.n_workers, options.size)
