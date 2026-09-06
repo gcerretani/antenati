@@ -10,13 +10,14 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import click
 from humanize import naturalsize
 from tqdm import tqdm
 
 from antenati import __copyright__, __version__
 from antenati.config import DownloadConfig
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, DownloadItem, DownloadReport, ProgressBar
-from antenati.output import ExistingPolicy, prepare_output, run_with_policy
+from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
 
 
 def _configure_logging(verbosity: int) -> None:
@@ -52,6 +53,29 @@ def print_preview(downloader: Downloader, size: int) -> None:
         print(f'{index:>5}  {_planned_filename(item)}  {label}  {canvas_id}  {item.source_url}')
 
 
+def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, policy: ExistingPolicy) -> ExistingPolicy:
+    """Resolve ``ask`` to a concrete policy before entering the downloader core."""
+    if policy is not ExistingPolicy.ASK or not existing_output_requires_decision(downloader, output):
+        return ExistingPolicy.ERROR if policy is ExistingPolicy.ASK else policy
+
+    directory = output_directory(downloader, output)
+    click.echo(f'Output directory already exists and is not empty: {directory}')
+    click.echo('Choose how to handle existing files:')
+    click.echo('  resume    verify and reuse valid downloads (recommended)')
+    click.echo('  overwrite download again and replace planned files')
+    click.echo('  skip      reuse verified files; refuse ambiguous existing files')
+    click.echo('  cancel    stop without changing the directory')
+    selected = click.prompt(
+        'Policy',
+        type=click.Choice(['resume', 'overwrite', 'skip', 'cancel'], case_sensitive=False),
+        default='resume',
+        show_choices=False,
+    ).lower()
+    if selected == 'cancel':
+        raise SystemExit(1)
+    return ExistingPolicy(selected)
+
+
 def _print_report(report: DownloadReport) -> None:
     print(
         f'Completed: {report.completed}/{report.expected}; skipped: {report.skipped}; '
@@ -77,8 +101,8 @@ def main() -> None:
     parser.add_argument(
         '--existing',
         choices=[policy.value for policy in ExistingPolicy],
-        default=ExistingPolicy.ERROR.value,
-        help='existing-file policy: error, overwrite, skip verified files without replacing unverified ones, or verified resume',
+        default=ExistingPolicy.ASK.value,
+        help='existing-file policy: ask, error, overwrite, skip verified files without replacing unverified ones, or verified resume',
     )
     parser.add_argument('--dry-run', action='store_true', help='show the resolved download plan without downloading image bodies or writing files')
     parser.add_argument('-v', '--version', action='version', version=__version__)
@@ -105,8 +129,9 @@ def main() -> None:
         print_preview(downloader, config.size)
         return
     downloader.print_gallery_info()
-    prepare_output(downloader, config.output_dir, config.existing_policy)
-    report = run_cli(downloader, config.n_workers, config.size, config.existing_policy)
+    policy = _resolve_cli_policy(downloader, config.output_dir, config.existing_policy)
+    prepare_output(downloader, config.output_dir, policy)
+    report = run_cli(downloader, config.n_workers, config.size, policy)
     _print_report(report)
     if report.cancelled or report.failed or not report.successful:
         raise SystemExit(1)
