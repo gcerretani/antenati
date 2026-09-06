@@ -21,6 +21,7 @@ from json import loads
 from mimetypes import guess_extension
 from os import mkdir, path
 from pathlib import Path
+from re import finditer
 from sys import exit as sys_exit
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -193,7 +194,11 @@ class Downloader:
         all_stems = self._build_unique_stems(self._all_canvases)
         selected_stems = all_stems[self.first : self.last]
         items = tuple(
-            DownloadItem(canvas=canvas, stem=stem, source_url=iiif.manipulate_image_url(iiif.image_url_for_canvas(canvas), size))
+            DownloadItem(
+                canvas=canvas,
+                stem=stem,
+                source_url=iiif.manipulate_image_url(iiif.image_url_for_canvas(canvas), size),
+            )
             for canvas, stem in zip(self._canvases, selected_stems, strict=True)
         )
         self._plan = DownloadPlan(items=items, size=size)
@@ -227,12 +232,25 @@ class Downloader:
         typology = iiif.get_metadata_value(manifest, iiif.META_TYPOLOGY)
         return Path(slugify(f'{context}-{year}-{typology}-{archive_id}'))
 
+    @staticmethod
+    def _pad_numeric_label(label: str, width: int) -> str:
+        """Pad the last numeric component while preserving label semantics."""
+        matches = list(finditer(r'\d+', label))
+        if not matches:
+            return label
+        match = matches[-1]
+        number = match.group(0).zfill(width)
+        return f'{label[: match.start()]}{number}{label[match.end() :]}'
+
     def _build_unique_stems(self, canvases: list[dict[str, Any]]) -> list[str]:
-        """Return stable, collision-free output stems for canvases."""
+        """Return stable, collision-free and lexicographically sortable stems."""
         used: set[str] = set()
         result: list[str] = []
+        width = len(str(len(canvases)))
         for index, canvas in enumerate(canvases, start=1):
-            label = slugify(str(canvas.get('label', ''))) or f'image-{index}'
+            raw_label = str(canvas.get('label', ''))
+            padded_label = self._pad_numeric_label(raw_label, width)
+            label = slugify(padded_label) or f'image-{index:0{width}d}'
             base = label
             if self.descriptive_names:
                 image_url = iiif.image_url_for_canvas(canvas)
@@ -285,7 +303,13 @@ class Downloader:
                 raise RuntimeError(f'{item.source_url}: Unable to guess extension "{content_type}"')
             filename = self.dirname / f'{item.stem}{extension}'
 
-            with NamedTemporaryFile(mode='wb', dir=self.dirname, prefix=f'.{item.stem}.', suffix='.tmp', delete=False) as img_file:
+            with NamedTemporaryFile(
+                mode='wb',
+                dir=self.dirname,
+                prefix=f'.{item.stem}.',
+                suffix='.tmp',
+                delete=False,
+            ) as img_file:
                 temp_name = img_file.name
                 img_file.write(http_reply.content)
                 img_file.flush()
@@ -303,7 +327,13 @@ class Downloader:
                 with suppress(FileNotFoundError):
                     os.unlink(temp_name)
 
-    def run(self, n_workers: int, size: int, progress: ProgressBar, cancel: threading.Event | None = None) -> DownloadReport:
+    def run(
+        self,
+        n_workers: int,
+        size: int,
+        progress: ProgressBar,
+        cancel: threading.Event | None = None,
+    ) -> DownloadReport:
         """Execute the selected plan and return a structured outcome report."""
         plan = self.plan(size)
         progress.set_total(plan.expected)
