@@ -14,7 +14,7 @@ def _null_progress() -> ProgressBar:
 
 def test_duplicate_canvas_labels_receive_unique_stems(downloader: Downloader) -> None:
     downloader.canvases[1]['label'] = downloader.canvases[0]['label']
-    stems = downloader._Downloader__build_unique_stems()  # noqa: SLF001 - regression test of planning invariant
+    stems = downloader._Downloader__build_unique_stems()
     assert len(stems) == len(set(stems))
     assert stems[0] == '0001'
     assert stems[1] == '0001-2'
