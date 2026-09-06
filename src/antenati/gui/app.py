@@ -10,6 +10,7 @@ import tkinter as tk
 import tkinter.filedialog as tkfile
 import tkinter.messagebox as tkmsg
 import tkinter.ttk as ttk
+from pathlib import Path
 from webbrowser import open as webopen
 
 from humanize import naturalsize
@@ -40,7 +41,7 @@ class App:
         self._n_workers = tk.IntVar(value=DEFAULT_N_THREADS)
         self._descriptive = tk.BooleanVar(value=False)
         self._path = tk.StringVar()
-        self._existing = tk.StringVar(value=ExistingPolicy.ERROR.value)
+        self._existing = tk.StringVar(value=ExistingPolicy.ASK.value)
 
         self._menu = tk.Menu(self._root)
         self._root.configure(menu=self._menu)
@@ -97,7 +98,7 @@ class App:
             state='readonly',
             width=12,
         ).grid(row=5, column=1, sticky=tk.W, padx=6, pady=2)
-        tk.Label(options, text='error (safe default), overwrite, skip, or verified resume').grid(row=5, column=2, sticky=tk.W, padx=6, pady=2)
+        tk.Label(options, text='ask (default), error, overwrite, skip, or verified resume').grid(row=5, column=2, sticky=tk.W, padx=6, pady=2)
 
         tk.Label(entry_frame, text='Output directory').grid(row=2, column=0, padx=10, pady=5, sticky=tk.EW)
         ttk.Entry(entry_frame, textvariable=self._path, width=100).grid(row=2, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
@@ -129,6 +130,37 @@ class App:
         if selected_path:
             self._path.set(selected_path)
 
+    def _resolve_gui_policy(self, output: str, policy: ExistingPolicy) -> ExistingPolicy | None:
+        """Resolve ``ask`` on the Tk thread; the background worker stays non-interactive."""
+        if policy is not ExistingPolicy.ASK:
+            return policy
+        directory = Path(output)
+        if not directory.exists() or not directory.is_dir() or not any(directory.iterdir()):
+            return ExistingPolicy.ERROR
+
+        resume = tkmsg.askyesnocancel(
+            'Existing output',
+            'The destination already contains files.\n\n'
+            'Yes: resume and verify existing downloads (recommended)\n'
+            'No: choose another action\n'
+            'Cancel: stop',
+        )
+        if resume is None:
+            return None
+        if resume:
+            return ExistingPolicy.RESUME
+
+        overwrite = tkmsg.askyesnocancel(
+            'Existing output',
+            'Overwrite planned files?\n\n'
+            'Yes: overwrite\n'
+            'No: skip verified files and refuse ambiguous files\n'
+            'Cancel: stop',
+        )
+        if overwrite is None:
+            return None
+        return ExistingPolicy.OVERWRITE if overwrite else ExistingPolicy.SKIP
+
     def _on_download(self) -> None:
         url = self._url.get().strip()
         if not url:
@@ -136,6 +168,10 @@ class App:
         output_value = self._path.get().strip()
         if not output_value:
             raise RuntimeError('Please choose an output directory.')
+
+        policy = self._resolve_gui_policy(output_value, ExistingPolicy(self._existing.get()))
+        if policy is None:
+            return
 
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
@@ -147,7 +183,7 @@ class App:
             last=last_val,
             n_workers=int(self._n_workers.get()),
             descriptive_names=bool(self._descriptive.get()),
-            existing_policy=ExistingPolicy(self._existing.get()),
+            existing_policy=policy,
         )
 
         self._progress = TkProgress(self._progress_bar)
