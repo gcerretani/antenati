@@ -145,10 +145,8 @@ class Downloader:
         return len(self.canvases)
 
     def load(self) -> Downloader:
-        """Resolve and validate the source manifest without downloading images."""
         if self._manifest is not None:
             return self
-
         archive_id = None if iiif.is_manifest_url(self.url) else iiif.get_archive_id_from_url(self.url)
         logger.info('Loading manifest from %s', self.url)
         manifest, manifest_url = self._load_manifest()
@@ -156,7 +154,6 @@ class Downloader:
         canvases = iiif.slice_canvases(manifest, self.first, self.last)
         if archive_id is None:
             archive_id = iiif.get_archive_id_from_canvases(all_canvases)
-
         self._manifest = manifest
         self._manifest_url = manifest_url
         self._all_canvases = all_canvases
@@ -168,13 +165,11 @@ class Downloader:
         return self
 
     def plan(self, size: int = DEFAULT_SIZE) -> DownloadPlan:
-        """Build a deterministic image plan without image/network writes."""
         self.load()
         if self._plan is not None and self._plan.size == size:
             return self._plan
         assert self._all_canvases is not None
         assert self._canvases is not None
-
         all_stems = self._build_unique_stems(self._all_canvases)
         selected_stems = all_stems[self.first : self.last]
         items = tuple(
@@ -226,7 +221,6 @@ class Downloader:
         return f'{label[: match.start()]}{number}{label[match.end() :]}'
 
     def _build_unique_stems(self, canvases: list[dict[str, Any]]) -> list[str]:
-        """Return stable, collision-free and lexicographically sortable stems."""
         used: set[str] = set()
         result: list[str] = []
         width = len(str(len(canvases)))
@@ -267,6 +261,10 @@ class Downloader:
         else:
             mkdir(self.dirname)
 
+    @staticmethod
+    def _resume_key(item: DownloadItem) -> tuple[str, str]:
+        return str(item.canvas.get('@id', '')), item.source_url
+
     def _thread_main(self, item: DownloadItem, size: int, cancel: threading.Event | None) -> provenance.ImageRecord:
         label = slugify(str(item.canvas.get('label', ''))) or item.stem
         temp_name: str | None = None
@@ -282,7 +280,6 @@ class Downloader:
                 raise RuntimeError(f'{item.source_url}: Unable to guess extension "{content_type}"')
             filename = self.dirname / f'{item.stem}{extension}'
             content = http_reply.content
-
             with NamedTemporaryFile(
                 mode='wb',
                 dir=self.dirname,
@@ -335,27 +332,44 @@ class Downloader:
         size: int,
         progress: ProgressBar,
         cancel: threading.Event | None = None,
+        *,
+        resume: bool = False,
     ) -> DownloadReport:
+        """Execute a plan, optionally reusing only hash-verified indexed files."""
         plan = self.plan(size)
         progress.set_total(plan.expected)
         if cancel is not None and cancel.is_set():
-            logger.info('Download cancelled before any work was submitted')
+            logger.info('Download cancelled before any image work was submitted')
             return DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
+
+        verified = (
+            provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
+        )
+        records: list[provenance.ImageRecord] = []
+        pending: list[DownloadItem] = []
+        skipped = 0
+        for item in plan.items:
+            existing = verified.get(self._resume_key(item))
+            if existing is None:
+                pending.append(item)
+            else:
+                records.append(existing)
+                skipped += 1
+                progress.update()
 
         attempted = 0
         completed = 0
         bytes_written = 0
         failures: list[PageFailure] = []
-        records: list[provenance.ImageRecord] = []
         cancelled = False
 
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            futures = {executor.submit(self._thread_main, item, size, cancel) for item in plan.items}
+            futures = {executor.submit(self._thread_main, item, size, cancel) for item in pending}
             for future in as_completed(futures):
                 if cancel is not None and cancel.is_set():
                     cancelled = True
-                    for pending in futures:
-                        pending.cancel()
+                    for waiting in futures:
+                        waiting.cancel()
                 if future.cancelled():
                     continue
                 attempted += 1
@@ -376,7 +390,7 @@ class Downloader:
             expected=plan.expected,
             attempted=attempted,
             completed=completed,
-            skipped=0,
+            skipped=skipped,
             failed=tuple(failures),
             cancelled=cancelled,
             bytes_written=bytes_written,
