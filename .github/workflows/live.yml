@@ -14,10 +14,17 @@ jobs:
   live:
     name: Live download against Portale Antenati
     runs-on: ubuntu-24.04
-    # We do NOT block PRs on this job: the Portale is intermittently slow
-    # or under WAF challenge, which would cause unrelated PRs to fail.
-    # CI failures show up as a red badge on the Actions tab instead.
-    continue-on-error: true
+    # This job does not gate PRs: the workflow has no push/pull_request
+    # trigger, so a red run here never blocks unrelated work. A failure is
+    # therefore allowed to surface normally, as a failed run with the usual
+    # GitHub notification.
+    #
+    # Expect occasional false positives: the Portale is intermittently slow,
+    # under WAF challenge, or returning 5xx from the IIIF backend. The
+    # urllib3 Retry policy in antenati.http already absorbs the short-lived
+    # ones, so a failure here generally means the SAN was actually down.
+    # Re-run the job before investigating a single isolated failure; a
+    # failure repeating across days is the signal worth chasing.
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
