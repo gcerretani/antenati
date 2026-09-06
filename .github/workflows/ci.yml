@@ -40,7 +40,7 @@ jobs:
       run: ruff check .
 
     - name: Ruff format check
-      run: ruff format --diff .
+      run: ruff format --check .
 
     - name: Mypy
       run: mypy src/antenati
