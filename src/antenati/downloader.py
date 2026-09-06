@@ -9,6 +9,7 @@ import os
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
 from dataclasses import dataclass
 from json import loads
 from mimetypes import guess_extension
@@ -98,7 +99,7 @@ class Downloader:
         """Return stable, collision-free output stems for selected canvases.
 
         Historical/default filenames remain unchanged unless two canvases
-        would otherwise resolve to the same path.  In that exceptional case
+        would otherwise resolve to the same path. In that exceptional case
         only later duplicates receive ``-2``, ``-3`` ... suffixes.
         """
         used: set[str] = set()
@@ -164,9 +165,6 @@ class Downloader:
                 raise RuntimeError(f'{url}: Unable to guess extension "{content_type}"')
             filename = self.dirname / f'{stem}{extension}'
 
-            # Never write directly to the final path.  A failed write must not
-            # truncate a previously valid download, and replacing a symlink
-            # path must replace the link itself rather than follow its target.
             with NamedTemporaryFile(
                 mode='wb',
                 dir=self.dirname,
@@ -188,10 +186,8 @@ class Downloader:
             raise ThreadError(label) from ex
         finally:
             if temp_name is not None:
-                try:
+                with suppress(FileNotFoundError):
                     os.unlink(temp_name)
-                except FileNotFoundError:
-                    pass
 
     def run(
         self,
