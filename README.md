@@ -19,22 +19,62 @@ One invocation resolves one gallery or direct Antenati manifest, builds a determ
 - **Bounded execution** — image bodies are streamed, in-flight work is bounded and explicit resource ceilings protect against anomalous sources.
 - **Preview mode** — inspect the exact pages, source URLs and output filenames before image files are written.
 - **CLI and GUI** — both use the same core configuration and validation rules.
-- **Cross-platform** — Windows, macOS and Linux; install with `pip` or use a release executable when available.
+- **Cross-platform** — Windows, macOS and Linux, with standalone GUI executables for users who do not want to install Python.
 
-## Installation
+## Installation and ways to use antenati
 
-Install from PyPI:
+There are several supported ways to run the program. **If you do not use Python, the standalone GUI from GitHub Releases is the simplest option.**
+
+### 1. Standalone graphical application — recommended for most users
+
+Open the project's [GitHub Releases](https://github.com/gcerretani/antenati/releases), choose the latest release and download the archive for your operating system from **Assets**:
+
+- **Windows** — `antenati_gui_windows.exe.zip`; extract the ZIP and run `antenati_gui.exe`.
+- **macOS Apple Silicon** — `antenati_gui_macos-14.zip`; extract it and run `antenati_gui`.
+- **Ubuntu/Linux x86_64** — `antenati_gui_ubuntu-22.04.zip`; extract it and run `antenati_gui`.
+
+These are standalone applications built by the release workflow: **Python and `pip` are not required**. On macOS/Linux you may need to allow execution according to your operating system's security settings.
+
+The standalone application provides the graphical interface described below. Paste the gallery URL, choose an output directory and start the download.
+
+### 2. Install from PyPI — recommended for Python/command-line users
+
+Python **3.10 or newer** is required:
 
 ```text
 pip install antenati
 ```
 
-Python **3.10 or newer** is required. The package installs:
+This installs both:
 
-- `antenati` — command-line interface
-- `antenati-gui` — Tk desktop interface
+- `antenati` — command-line interface;
+- `antenati-gui` — Tk desktop interface.
 
-Standalone GUI executables for supported platforms are attached to GitHub releases when produced by the release workflow.
+Examples:
+
+```text
+antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
+antenati-gui
+```
+
+To upgrade an existing PyPI installation:
+
+```text
+pip install --upgrade antenati
+```
+
+### 3. Run/install from the source repository — for developers
+
+Clone the repository and install it in a virtual environment. For an editable development installation:
+
+```text
+git clone https://github.com/gcerretani/antenati.git
+cd antenati
+python -m venv .venv
+pip install -e ".[dev]"
+```
+
+Activate the virtual environment using the command appropriate for your operating system, then run `antenati` or `antenati-gui`. This method is intended for development and testing; normal users should prefer a release executable or PyPI.
 
 ## Supported inputs
 
@@ -70,7 +110,7 @@ By default the output directory is derived from the register metadata. Use `--ou
 | `-l`, `--last N` | Zero-based exclusive end index. |
 | `-d`, `--descriptive-names` | Include archive/image identifiers in filenames. |
 | `-o`, `--output PATH` | Exact output directory. |
-| `--existing {error,overwrite,skip,resume}` | Policy when the output already exists. Default: `error`. |
+| `--existing {ask,error,overwrite,skip,resume}` | Policy when the output already exists. Default: `ask`. |
 | `--dry-run` | Resolve the source and print the planned pages/filenames without downloading image bodies or creating the output directory. |
 | `--verbose` | Increase logging verbosity; repeat for DEBUG. |
 | `-v`, `--version` | Print the version and exit. |
@@ -79,10 +119,13 @@ Run `antenati -h` for the authoritative option list.
 
 ### Existing-output policies
 
-- `error` — conservative default; refuse an existing output directory.
-- `overwrite` — allow the run to replace planned destination files through atomic writes.
+- `ask` — default interactive behavior. If the destination is non-empty, CLI/GUI ask what to do; verified `resume` is the recommended/default choice.
+- `error` — refuse a non-empty existing output directory without asking.
+- `overwrite` — download again and replace planned destination files through atomic writes.
 - `resume` — verify indexed existing files and redownload only missing, stale, mismatched or corrupt pages.
 - `skip` — reuse only files that can be verified from the provenance index; ambiguous unverified files are never silently accepted.
+
+For scripts and unattended runs, select an explicit non-interactive policy instead of `ask`, for example `--existing resume` or `--existing error`.
 
 The same source canvas receives the same planned filename regardless of the selected subset, worker count or completion order. For example, a 150-page gallery uses names such as `pag-001.jpg`; downloading only pages 7–12 still produces the corresponding zero-padded names from the complete gallery.
 
@@ -107,7 +150,7 @@ These checks improve local integrity; they do not cryptographically authenticate
 | Worker count | yes | yes |
 | Descriptive filenames | yes | yes |
 | Exact output directory | yes | yes |
-| Existing-output policy | yes | yes |
+| Existing-output policy / ask | yes | yes |
 | Verified resume | yes | yes |
 | Shared validation/reporting | yes | yes |
 | Dry-run preview | yes | not yet |
@@ -116,7 +159,7 @@ Dry-run is currently a CLI review surface; the underlying download plan is share
 
 ## Graphical interface
 
-Launch:
+If you downloaded a standalone release executable, launch that application directly. If you installed from PyPI, launch:
 
 ```text
 antenati-gui
@@ -124,7 +167,7 @@ antenati-gui
 
 ![GUI Screenshot](https://raw.githubusercontent.com/gcerretani/antenati/master/docs/gui_screenshot.png)
 
-Paste a gallery/manifest URL, choose the **exact destination directory**, then select the page range, image size, thread count, descriptive-name option and existing-output policy. The GUI runs the same downloader configuration, validation and result model as the CLI.
+Paste a gallery/manifest URL, choose the **exact destination directory**, then select the page range, image size, thread count, descriptive-name option and existing-output policy. The default `ask` policy prompts when the destination already contains files and recommends verified resume. The GUI runs the same downloader configuration, validation and result model as the CLI.
 
 ## AWS WAF and live-site limitations
 
