@@ -10,9 +10,9 @@ import threading
 from dataclasses import dataclass
 from typing import Protocol
 
-from antenati.downloader import DEFAULT_N_THREADS, DownloadReport, Downloader, ProgressBar
-from antenati.output import ExistingPolicy, prepare_output, run_with_policy
-from antenati.validation import DownloadOptions
+from antenati.config import DownloadConfig
+from antenati.downloader import DownloadReport, Downloader, ProgressBar
+from antenati.output import prepare_output, run_with_policy
 
 logger = logging.getLogger(__name__)
 
@@ -46,30 +46,8 @@ WorkerEvent = Progress | Tick | Done | Cancelled | Failed
 
 
 @dataclass
-class DownloadParams:
-    url: str
-    output_dir: str
-    size: int
-    first: int
-    last: int | None
-    n_workers: int = DEFAULT_N_THREADS
-    existing_policy: ExistingPolicy = ExistingPolicy.ERROR
-    descriptive_names: bool = False
-
-    def options(self) -> DownloadOptions:
-        return DownloadOptions(first=self.first, last=self.last, size=self.size, n_workers=self.n_workers)
-
-    def validate(self) -> DownloadParams:
-        self.options().validate()
-        if not self.url.strip():
-            from antenati.errors import ValidationError
-
-            raise ValidationError('url must not be empty')
-        if not self.output_dir.strip():
-            from antenati.errors import ValidationError
-
-            raise ValidationError('output directory must not be empty')
-        return self
+class DownloadParams(DownloadConfig):
+    """Backward-compatible GUI name for the shared download configuration."""
 
 
 class DownloaderFactory(Protocol):
@@ -88,7 +66,7 @@ class DownloadWorker:
         self._thread: threading.Thread | None = None
 
     def start(self, params: DownloadParams) -> None:
-        params.validate()
+        params.validate(require_output=True)
         if self._thread is not None and self._thread.is_alive():
             raise RuntimeError('A download is already in progress')
         self._cancel.clear()
@@ -107,7 +85,7 @@ class DownloadWorker:
 
     def _run(self, params: DownloadParams) -> None:
         try:
-            params.validate()
+            params.validate(require_output=True)
             downloader = self._factory(params.url, params.first, params.last, params.descriptive_names)
             downloader.load()
             prepare_output(downloader, params.output_dir, params.existing_policy)

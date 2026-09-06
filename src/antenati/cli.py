@@ -14,9 +14,9 @@ from humanize import naturalsize
 from tqdm import tqdm
 
 from antenati import __copyright__, __version__
+from antenati.config import DownloadConfig
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, DownloadItem, DownloadReport, Downloader, ProgressBar
 from antenati.output import ExistingPolicy, prepare_output, run_with_policy
-from antenati.validation import DownloadOptions
 
 
 def _configure_logging(verbosity: int) -> None:
@@ -85,19 +85,28 @@ def main() -> None:
     parser.add_argument('--verbose', action='count', default=0, help='increase logging verbosity (--verbose for INFO, twice for DEBUG)')
     args = parser.parse_args()
 
-    options = DownloadOptions(first=args.first, last=args.last, size=args.size, n_workers=args.nthreads).validate()
-    policy = ExistingPolicy(args.existing)
+    config = DownloadConfig(
+        url=args.url,
+        output_dir=str(args.output) if args.output is not None else None,
+        size=args.size,
+        first=args.first,
+        last=args.last,
+        n_workers=args.nthreads,
+        descriptive_names=args.descriptive_names,
+        existing_policy=ExistingPolicy(args.existing),
+        dry_run=args.dry_run,
+    ).validate()
     _configure_logging(args.verbose)
-    downloader = Downloader(args.url, options.first, options.last, descriptive_names=args.descriptive_names)
+    downloader = Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
     downloader.load()
-    if args.output is not None:
-        downloader.dirname = args.output
-    if args.dry_run:
-        print_preview(downloader, options.size)
+    if config.output_dir is not None:
+        downloader.dirname = Path(config.output_dir)
+    if config.dry_run:
+        print_preview(downloader, config.size)
         return
     downloader.print_gallery_info()
-    prepare_output(downloader, args.output, policy)
-    report = run_cli(downloader, options.n_workers, options.size, policy)
+    prepare_output(downloader, config.output_dir, config.existing_policy)
+    report = run_cli(downloader, config.n_workers, config.size, config.existing_policy)
     _print_report(report)
     if report.cancelled or report.failed or not report.successful:
         raise SystemExit(1)
