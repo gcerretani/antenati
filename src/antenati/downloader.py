@@ -13,7 +13,6 @@ from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from json import loads
-from mimetypes import guess_extension
 from os import mkdir, path
 from pathlib import Path
 from re import finditer
@@ -26,6 +25,7 @@ from requests import RequestException, Session
 from slugify import slugify
 
 from antenati import http, iiif, provenance
+from antenati import image as image_validation
 from antenati.errors import AntenatiError, ThreadError
 
 logger = logging.getLogger(__name__)
@@ -275,11 +275,9 @@ class Downloader:
             if cancel is not None and cancel.is_set():
                 raise CancelledError
             content_type = http.get_content_type(http_reply)
-            extension = guess_extension(content_type)
-            if not extension:
-                raise RuntimeError(f'{item.source_url}: Unable to guess extension "{content_type}"')
-            filename = self.dirname / f'{item.stem}{extension}'
             content = http_reply.content
+            extension = image_validation.validate_image_bytes(content_type, content)
+            filename = self.dirname / f'{item.stem}{extension}'
             with NamedTemporaryFile(
                 mode='wb',
                 dir=self.dirname,
@@ -335,7 +333,6 @@ class Downloader:
         *,
         resume: bool = False,
     ) -> DownloadReport:
-        """Execute a plan, optionally reusing only hash-verified indexed files."""
         plan = self.plan(size)
         progress.set_total(plan.expected)
         if cancel is not None and cancel.is_set():
