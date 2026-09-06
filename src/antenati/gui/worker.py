@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from antenati.config import DownloadConfig
-from antenati.downloader import DownloadReport, Downloader, ProgressBar
+from antenati.downloader import Downloader, DownloadReport, ProgressBar
 from antenati.output import prepare_output, run_with_policy
 
 logger = logging.getLogger(__name__)

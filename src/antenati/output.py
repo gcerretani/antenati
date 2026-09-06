@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from antenati import provenance
-from antenati.downloader import DownloadItem, DownloadReport, Downloader, ProgressBar
+from antenati.downloader import Downloader, DownloadItem, DownloadReport, ProgressBar
 
 
 class ExistingPolicy(str, Enum):
@@ -62,8 +62,7 @@ def _validate_skip_policy(downloader: Downloader, size: int) -> None:
         key = (str(item.canvas.get('@id', '')), item.source_url)
         if candidate.exists() and key not in verified_keys:
             raise RuntimeError(
-                f'{candidate}: existing file is not verified for this source/resolution; '
-                'use resume to verify/redownload it or overwrite to replace it'
+                f'{candidate}: existing file is not verified for this source/resolution; use resume to verify/redownload it or overwrite to replace it'
             )
 
 

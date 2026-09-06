@@ -20,10 +20,10 @@ except PackageNotFoundError:
 from antenati.downloader import (
     DEFAULT_N_THREADS,
     DEFAULT_SIZE,
+    Downloader,
     DownloadItem,
     DownloadPlan,
     DownloadReport,
-    Downloader,
     PageFailure,
     ProgressBar,
 )

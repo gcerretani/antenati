@@ -6,7 +6,7 @@ import pytest
 import responses
 
 from antenati import ProgressBar
-from antenati.downloader import DownloadLimits, Downloader
+from antenati.downloader import Downloader, DownloadLimits
 from antenati.errors import ResourceLimitError
 from tests.conftest import GALLERY_URL, TINY_JPEG
 

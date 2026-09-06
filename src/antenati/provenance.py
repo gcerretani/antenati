@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from dataclasses import asdict, dataclass
@@ -108,10 +109,8 @@ def _atomic_write_text(path: Path, text: str) -> None:
         temp_name = None
     finally:
         if temp_name is not None:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(temp_name)
-            except FileNotFoundError:
-                pass
 
 
 def write_provenance(

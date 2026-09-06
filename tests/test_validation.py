@@ -34,10 +34,10 @@ def test_programmatic_run_rejects_invalid_workers_before_network() -> None:
     with responses.RequestsMock() as mocked:
         with pytest.raises(ValidationError, match='n_workers'):
             downloader.run(n_workers=0, size=0, progress=_null_progress())
-        assert mocked.calls == []
+        assert len(mocked.calls) == 0
 
 
 def test_gui_params_use_same_core_validation() -> None:
-    params = DownloadParams(url='https://example.invalid/manifest', parent_dir='.', size=-1, first=0, last=None)
+    params = DownloadParams(url='https://example.invalid/manifest', output_dir='.', size=-1, first=0, last=None)
     with pytest.raises(ValidationError, match='size'):
-        params.validate()
+        params.validate(require_output=True)

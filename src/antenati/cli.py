@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from antenati import __copyright__, __version__
 from antenati.config import DownloadConfig
-from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, DownloadItem, DownloadReport, Downloader, ProgressBar
+from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, DownloadItem, DownloadReport, ProgressBar
 from antenati.output import ExistingPolicy, prepare_output, run_with_policy
 
 

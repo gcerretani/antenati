@@ -28,10 +28,7 @@ CONNECT_TIMEOUT_SECONDS: float = 10.0
 READ_TIMEOUT_SECONDS: float = 60.0
 DEFAULT_TIMEOUT: tuple[float, float] = (CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS)
 
-_USER_AGENT: str = (
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-    '(KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
-)
+_USER_AGENT: str = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
 _REFERER: str = 'https://antenati.cultura.gov.it/'
 
 

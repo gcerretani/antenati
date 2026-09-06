@@ -301,7 +301,7 @@ class Downloader:
 
     def print_gallery_info(self) -> None:
         for entry in self.manifest['metadata']:
-            print(f"{entry['label']:<25}{entry['value']}")
+            print(f'{entry["label"]:<25}{entry["value"]}')
         print(f'{self.gallery_length} images found.')
 
     def check_dir(self, parentdir: str | None = None, interactive: bool = True) -> None:
@@ -436,9 +436,7 @@ class Downloader:
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any image work was submitted')
             return DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
-        verified = (
-            provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
-        )
+        verified = provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
         records: list[provenance.ImageRecord] = []
         pending: list[DownloadItem] = []
         skipped = 0

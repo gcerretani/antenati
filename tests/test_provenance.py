@@ -34,7 +34,7 @@ def test_run_persists_manifest_and_per_image_provenance(mocked_http, tmp_path: P
     assert index['requested_size'] == 0
     assert len(index['images']) == 1
     record = index['images'][0]
-    assert record['canvas_id'].endswith('/iiif-19944535/canvas/1')
+    assert record['canvas_id'].endswith('/iiif-19944535/canvas/p1')
     assert record['source_url'] == image_url
     assert record['filename'] == '0001.jpg'
     assert record['byte_size'] == len(TINY_JPEG)
