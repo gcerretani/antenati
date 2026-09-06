@@ -97,16 +97,11 @@ def image_url_for_canvas(canvas: dict[str, Any]) -> str:
 
 
 def manipulate_image_url(url: str, size: int) -> str:
-    """Rewrite the size component of a IIIF Image API URL.
-
-    The size is the third component from the end of the IIIF request path:
-    ``.../{identifier}/{region}/{size}/{rotation}/{quality.format}``.
-    Replacing that component handles ``full``, ``max``, ``pct:*`` and other
-    valid source size forms without depending on one literal template.
-    """
+    """Rewrite the size component of a IIIF Image API request URL."""
     parsed = urlsplit(url)
     parts = parsed.path.split('/')
-    if len(parts) < 5:
-        raise ManifestError(f'Invalid IIIF image URL: {url}')
+    # Preserve historical behavior for non Image-API URLs such as info.json.
+    if len(parts) < 7:
+        return url
     parts[-3] = f'!{size},{size}' if size > 0 else 'pct:100'
     return urlunsplit((parsed.scheme, parsed.netloc, '/'.join(parts), parsed.query, parsed.fragment))
