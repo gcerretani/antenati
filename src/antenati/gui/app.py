@@ -18,6 +18,7 @@ from antenati import __contact__, __copyright__, __version__
 from antenati.downloader import DEFAULT_SIZE
 from antenati.gui.progress import TkProgress
 from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Progress, Tick
+from antenati.output import ExistingPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class App:
         self._first = tk.IntVar(value=0)
         self._last = tk.StringVar(value='')
         self._path = tk.StringVar()
+        self._existing = tk.StringVar(value=ExistingPolicy.ERROR.value)
 
         self._menu = tk.Menu(self._root)
         self._root.configure(menu=self._menu)
@@ -78,7 +80,17 @@ class App:
         ttk.Entry(options, textvariable=self._last, width=10).grid(row=2, column=1, sticky=tk.W, padx=6, pady=2)
         tk.Label(options, text='Index NOT to download; leave empty to download all').grid(row=2, column=2, sticky=tk.W, padx=6, pady=2)
 
-        tk.Label(entry_frame, text='Destination folder').grid(row=2, column=0, padx=10, pady=5, sticky=tk.EW)
+        tk.Label(options, text='Existing files:').grid(row=3, column=0, sticky=tk.W, padx=6, pady=2)
+        ttk.Combobox(
+            options,
+            textvariable=self._existing,
+            values=[policy.value for policy in ExistingPolicy],
+            state='readonly',
+            width=12,
+        ).grid(row=3, column=1, sticky=tk.W, padx=6, pady=2)
+        tk.Label(options, text='error (safe default), overwrite, skip, or verified resume').grid(row=3, column=2, sticky=tk.W, padx=6, pady=2)
+
+        tk.Label(entry_frame, text='Output directory').grid(row=2, column=0, padx=10, pady=5, sticky=tk.EW)
         ttk.Entry(entry_frame, textvariable=self._path, width=100).grid(row=2, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
         ttk.Button(entry_frame, text='Browse', command=self._browse_path).grid(row=2, column=3, padx=10, pady=5, sticky=tk.EW)
 
@@ -112,13 +124,20 @@ class App:
         url = self._url.get().strip()
         if not url:
             raise RuntimeError('Please enter a valid URL.')
-        path_value = self._path.get().strip()
-        if not path_value:
-            raise RuntimeError('Please enter a valid destination folder.')
+        output_value = self._path.get().strip()
+        if not output_value:
+            raise RuntimeError('Please choose an output directory.')
 
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
-        params = DownloadParams(url=url, parent_dir=path_value, size=self._size.get(), first=int(self._first.get()), last=last_val)
+        params = DownloadParams(
+            url=url,
+            output_dir=output_value,
+            size=self._size.get(),
+            first=int(self._first.get()),
+            last=last_val,
+            existing_policy=ExistingPolicy(self._existing.get()),
+        )
 
         self._progress = TkProgress(self._progress_bar)
         self._terminal_received = False
@@ -153,13 +172,13 @@ class App:
             self._set_running(False)
             report = event.report
             if report.successful:
-                tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(report.bytes_written, True)}')
+                tkmsg.showinfo(
+                    'Success',
+                    f'Completed {report.completed}, skipped {report.skipped}. New data: {naturalsize(report.bytes_written, True)}',
+                )
             else:
                 details = '\n'.join(f'{f.label}: {f.reason}' for f in report.failed)
-                tkmsg.showwarning(
-                    'Incomplete download',
-                    f'Completed {report.completed}/{report.expected}; failed {len(report.failed)}.\n{details}',
-                )
+                tkmsg.showwarning('Incomplete download', f'Completed {report.completed}/{report.expected}; failed {len(report.failed)}.\n{details}')
         elif isinstance(event, Cancelled):
             self._terminal_received = True
             self._set_running(False)

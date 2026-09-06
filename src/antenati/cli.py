@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from antenati import __copyright__, __version__
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, DownloadItem, DownloadReport, Downloader, ProgressBar
+from antenati.output import ExistingPolicy, prepare_output, run_with_policy
 from antenati.validation import DownloadOptions
 
 
@@ -27,14 +28,13 @@ def _configure_logging(verbosity: int) -> None:
     logging.basicConfig(level=level, format='%(levelname)s %(name)s: %(message)s')
 
 
-def run_cli(downloader: Downloader, n_workers: int, size: int) -> DownloadReport:
+def run_cli(downloader: Downloader, n_workers: int, size: int, policy: ExistingPolicy = ExistingPolicy.OVERWRITE) -> DownloadReport:
     with tqdm(unit='img') as progress:
         progress_bar = ProgressBar(progress.reset, progress.update)  # type: ignore[arg-type]
-        return downloader.run(n_workers, size, progress_bar)
+        return run_with_policy(downloader, n_workers=n_workers, size=size, progress=progress_bar, policy=policy)
 
 
 def _planned_filename(item: DownloadItem) -> str:
-    """Return the filename implied by the IIIF request URL without fetching it."""
     suffix = Path(urlsplit(item.source_url).path).suffix.lower()
     if suffix in {'.jpeg', '.jpe'}:
         suffix = '.jpg'
@@ -44,7 +44,6 @@ def _planned_filename(item: DownloadItem) -> str:
 
 
 def print_preview(downloader: Downloader, size: int) -> None:
-    """Print the exact planned canvases without creating files or fetching images."""
     plan = downloader.plan(size)
     print(f'Preview: {plan.expected} images -> {downloader.dirname}')
     for index, item in enumerate(plan.items, start=1):
@@ -74,21 +73,31 @@ def main() -> None:
     parser.add_argument('-f', '--first', type=int, default=0, help='first image to download')
     parser.add_argument('-l', '--last', type=int, default=None, help='first image NOT to download')
     parser.add_argument('-d', '--descriptive-names', action='store_true', help='include the archive and image IDs in saved file names')
+    parser.add_argument('-o', '--output', type=Path, default=None, help='exact output directory (default: generated archive directory)')
+    parser.add_argument(
+        '--existing',
+        choices=[policy.value for policy in ExistingPolicy],
+        default=ExistingPolicy.ERROR.value,
+        help='existing-file policy: error, overwrite, skip verified files without replacing unverified ones, or verified resume',
+    )
     parser.add_argument('--dry-run', action='store_true', help='show the resolved download plan without downloading image bodies or writing files')
     parser.add_argument('-v', '--version', action='version', version=__version__)
     parser.add_argument('--verbose', action='count', default=0, help='increase logging verbosity (--verbose for INFO, twice for DEBUG)')
     args = parser.parse_args()
 
     options = DownloadOptions(first=args.first, last=args.last, size=args.size, n_workers=args.nthreads).validate()
+    policy = ExistingPolicy(args.existing)
     _configure_logging(args.verbose)
     downloader = Downloader(args.url, options.first, options.last, descriptive_names=args.descriptive_names)
     downloader.load()
+    if args.output is not None:
+        downloader.dirname = args.output
     if args.dry_run:
         print_preview(downloader, options.size)
         return
     downloader.print_gallery_info()
-    downloader.check_dir()
-    report = run_cli(downloader, options.n_workers, options.size)
+    prepare_output(downloader, args.output, policy)
+    report = run_cli(downloader, options.n_workers, options.size, policy)
     _print_report(report)
     if report.cancelled or report.failed or not report.successful:
         raise SystemExit(1)
