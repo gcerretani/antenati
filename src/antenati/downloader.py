@@ -1,30 +1,22 @@
 # SPDX-FileCopyrightText: 2018 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Core download orchestration for the Portale Antenati.
-
-The :class:`Downloader` is the main entry point used by both the CLI
-(:mod:`antenati.cli`) and the GUI (:mod:`antenati.gui`). It composes the
-side-effect free helpers from :mod:`antenati.iiif` with the HTTP session
-built in :mod:`antenati.http`, and runs the per-canvas image downloads in
-a thread pool.
-
-Keeping this orchestration in its own module makes it possible to embed
-the downloader from third-party scripts without depending on the CLI
-plumbing (``argparse``, ``click.confirm``, ``tqdm``).
-"""
+"""Core download orchestration for the Portale Antenati."""
 
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
 from dataclasses import dataclass
 from json import loads
 from mimetypes import guess_extension
 from os import mkdir, path
 from pathlib import Path
 from sys import exit as sys_exit
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from click import confirm, echo
@@ -42,12 +34,7 @@ DEFAULT_N_THREADS: int = 2
 
 @dataclass
 class ProgressBar:
-    """Callback pair used to drive a progress indicator.
-
-    Both callbacks are invoked from the orchestrating thread, so simple
-    in-process counters are fine. GUIs that need to marshal updates onto
-    a UI thread should do so inside the ``update`` callback.
-    """
+    """Callback pair used to drive a progress indicator."""
 
     set_total: Callable[[int], None]
     update: Callable[[], None]
@@ -70,11 +57,6 @@ class Downloader:
         self.url = url
         self.session = http.build_session()
         self.descriptive_names = descriptive_names
-        # A gallery URL embeds the archive ID: extract it up front so a
-        # malformed URL fails before any network round-trip. A manifest
-        # URL does not embed it; in that case it is recovered after the
-        # fetch from the first canvas @id, the only place the manifest
-        # repeats it.
         archive_id = None if iiif.is_manifest_url(url) else iiif.get_archive_id_from_url(url)
         logger.info('Loading manifest from %s', url)
         self.manifest = self.__load_manifest()
@@ -83,13 +65,17 @@ class Downloader:
         self.ark_id = self.__resolve_ark_id()
         self.dirname = self.__generate_dirname()
         self.gallery_length = len(self.canvases)
+
+        # Plan names against the complete gallery, then apply the same slice
+        # used for the canvases. This keeps collision suffixes stable even if
+        # the user downloads the same pages later through a different range.
+        all_canvases = iiif.slice_canvases(self.manifest, 0, None)
+        all_stems = self.__build_unique_stems(all_canvases)
+        self._download_stems = all_stems[first:last]
         logger.info('Manifest loaded: %d canvases selected', self.gallery_length)
 
     def __load_manifest(self) -> dict[str, Any]:
         if iiif.is_manifest_url(self.url):
-            # The manifest endpoint is not behind the AWS WAF, so a user
-            # who gets a challenge on the gallery page can copy the "IIIF
-            # manifest" link from it and pass that URL directly (issue #25).
             manifest_url = self.url
         else:
             gallery_reply = http.fetch(self.session, self.url)
@@ -115,6 +101,31 @@ class Downloader:
         typology = iiif.get_metadata_value(self.manifest, iiif.META_TYPOLOGY)
         return Path(slugify(f'{context}-{year}-{typology}-{self.archive_id}'))
 
+    def __build_unique_stems(self, canvases: list[dict[str, Any]] | None = None) -> list[str]:
+        """Return stable, collision-free output stems for canvases.
+
+        Historical/default filenames remain unchanged unless two canvases
+        would otherwise resolve to the same path. In that exceptional case
+        only later duplicates receive ``-2``, ``-3`` ... suffixes.
+        """
+        source_canvases = self.canvases if canvases is None else canvases
+        used: set[str] = set()
+        result: list[str] = []
+        for index, canvas in enumerate(source_canvases, start=1):
+            label = slugify(str(canvas.get('label', ''))) or f'image-{index}'
+            base = label
+            if self.descriptive_names:
+                image_url = iiif.image_url_for_canvas(canvas)
+                base = f'{label}+{self.ark_id}+{iiif.get_image_id_from_url(image_url)}'
+            candidate = base
+            suffix = 2
+            while candidate in used:
+                candidate = f'{base}-{suffix}'
+                suffix += 1
+            used.add(candidate)
+            result.append(candidate)
+        return result
+
     def print_gallery_info(self) -> None:
         """Write the gallery's IIIF metadata to stdout."""
         for entry in self.manifest['metadata']:
@@ -138,26 +149,52 @@ class Downloader:
         else:
             mkdir(self.dirname)
 
-    def __thread_main(self, canvas: dict[str, Any], size: int) -> int:
-        label = slugify(canvas['label'])
+    def __thread_main(
+        self,
+        canvas: dict[str, Any],
+        stem: str,
+        size: int,
+        cancel: threading.Event | None,
+    ) -> int:
+        label = slugify(str(canvas.get('label', ''))) or stem
+        temp_name: str | None = None
         try:
+            if cancel is not None and cancel.is_set():
+                return 0
             image_url = iiif.image_url_for_canvas(canvas)
-            stem = label
-            if self.descriptive_names:
-                stem = f'{label}+{self.ark_id}+{iiif.get_image_id_from_url(image_url)}'
             url = iiif.manipulate_image_url(image_url, size)
             http_reply = http.fetch(self.session, url)
+            if cancel is not None and cancel.is_set():
+                return 0
             content_type = http.get_content_type(http_reply)
             extension = guess_extension(content_type)
             if not extension:
                 raise RuntimeError(f'{url}: Unable to guess extension "{content_type}"')
             filename = self.dirname / f'{stem}{extension}'
-            with open(filename, 'wb') as img_file:
+
+            with NamedTemporaryFile(
+                mode='wb',
+                dir=self.dirname,
+                prefix=f'.{stem}.',
+                suffix='.tmp',
+                delete=False,
+            ) as img_file:
+                temp_name = img_file.name
                 img_file.write(http_reply.content)
+                img_file.flush()
+                os.fsync(img_file.fileno())
+            if cancel is not None and cancel.is_set():
+                return 0
+            os.replace(temp_name, filename)
+            temp_name = None
             return len(http_reply.content)
         except (RequestException, AntenatiError, OSError, RuntimeError) as ex:
             logger.warning('Image %s failed: %s', label, ex)
             raise ThreadError(label) from ex
+        finally:
+            if temp_name is not None:
+                with suppress(FileNotFoundError):
+                    os.unlink(temp_name)
 
     def run(
         self,
@@ -166,20 +203,18 @@ class Downloader:
         progress: ProgressBar,
         cancel: threading.Event | None = None,
     ) -> int:
-        """Download all canvases concurrently. Returns total bytes written.
+        """Download all canvases concurrently. Returns total bytes written."""
+        progress.set_total(self.gallery_length)
+        if cancel is not None and cancel.is_set():
+            logger.info('Download cancelled before any work was submitted')
+            return 0
 
-        Passing ``cancel`` lets a caller (typically the GUI) request early
-        termination: when the event is set, futures that have not started
-        yet are skipped and the call returns the partial total. Already
-        running fetches finish naturally — interrupting an in-flight HTTP
-        request requires patching :mod:`requests`, which is more invasive
-        than the benefit warrants.
-        """
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            future_img = {executor.submit(self.__thread_main, i, size) for i in self.canvases}
-            progress.set_total(self.gallery_length)
+            future_img = {
+                executor.submit(self.__thread_main, canvas, stem, size, cancel) for canvas, stem in zip(self.canvases, self._download_stems, strict=True)
+            }
             gallery_size = 0
-            failed: dict[str, str] = {}
+            failed: list[tuple[str, str]] = []
             for future in as_completed(future_img):
                 if cancel is not None and cancel.is_set():
                     for f in future_img:
@@ -190,10 +225,9 @@ class Downloader:
                 try:
                     gallery_size += future.result()
                 except ThreadError as ex:
-                    failed[ex.label] = str(ex.__cause__)
-                    continue
+                    failed.append((ex.label, str(ex.__cause__)))
             if failed:
                 msg = f'Failed to download {len(failed)} images:\n'
-                msg += '\n - '.join(f'{k}: {v}' for k, v in failed.items())
+                msg += '\n - '.join(f'{label}: {reason}' for label, reason in failed)
                 raise RuntimeError(msg)
             return gallery_size
