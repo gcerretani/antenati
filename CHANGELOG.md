@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [6.2] - 2026-09-06
+
+### Fixed
+- Prevent silent overwrites when multiple canvases normalize to the same default filename; later collisions now receive deterministic suffixes
+- Add bounded HTTP connect/read timeouts and ensure a cancellation already requested before `run()` performs no image requests
+- Write downloads through temporary files and atomically replace the destination only after a complete write, preserving existing good files on write failures and avoiding symlink-following writes
+- Fix a Tk GUI race where the terminal `Done`/`Failed`/`Cancelled` event could remain unprocessed after the worker exited
+- Parse Antenati archive IDs and `manifestId` assignments structurally, including URLs with explicit ports
+- Rewrite the IIIF size component structurally so valid source forms such as `max` are handled correctly
+- Make the scheduled live-download canary report failures at workflow-run level instead of appearing green
+- Preserve executable permissions in packaged macOS/Linux release archives
+
+### Added
+- Regression tests for duplicate canvas labels, preset cancellation, archive URLs with explicit ports, `manifestId` binding, and IIIF `max` size rewriting
+
 ## [6.1] - 2026-06-12
 
 ### Added
