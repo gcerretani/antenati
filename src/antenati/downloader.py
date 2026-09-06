@@ -1,12 +1,6 @@
 # SPDX-FileCopyrightText: 2018 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Core download orchestration for the Portale Antenati.
-
-The downloader lifecycle is deliberately split into explicit phases:
-construct configuration, load the manifest, build a deterministic plan, then
-execute it. Execution returns a structured :class:`DownloadReport` shared by
-CLI and GUI callers.
-"""
+"""Core download orchestration for the Portale Antenati."""
 
 from __future__ import annotations
 
@@ -17,6 +11,7 @@ from collections.abc import Callable
 from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from contextlib import suppress
 from dataclasses import dataclass
+from hashlib import sha256
 from json import loads
 from mimetypes import guess_extension
 from os import mkdir, path
@@ -30,7 +25,7 @@ from click import confirm, echo
 from requests import RequestException, Session
 from slugify import slugify
 
-from antenati import http, iiif
+from antenati import http, iiif, provenance
 from antenati.errors import AntenatiError, ThreadError
 
 logger = logging.getLogger(__name__)
@@ -41,16 +36,12 @@ DEFAULT_N_THREADS: int = 2
 
 @dataclass
 class ProgressBar:
-    """Callback pair used to drive a progress indicator."""
-
     set_total: Callable[[int], None]
     update: Callable[[], None]
 
 
 @dataclass(frozen=True)
 class DownloadItem:
-    """One planned canvas download, independent from execution order."""
-
     canvas: dict[str, Any]
     stem: str
     source_url: str
@@ -58,8 +49,6 @@ class DownloadItem:
 
 @dataclass(frozen=True)
 class DownloadPlan:
-    """Immutable execution plan produced from a loaded manifest."""
-
     items: tuple[DownloadItem, ...]
     size: int
 
@@ -70,16 +59,12 @@ class DownloadPlan:
 
 @dataclass(frozen=True)
 class PageFailure:
-    """Failure associated with one planned page."""
-
     label: str
     reason: str
 
 
 @dataclass(frozen=True)
 class DownloadReport:
-    """Complete outcome of one execution attempt."""
-
     expected: int
     attempted: int
     completed: int
@@ -106,7 +91,6 @@ class Downloader:
         self.last = last
         self.descriptive_names = descriptive_names
         self.session: Session = http.build_session()
-
         self._manifest: dict[str, Any] | None = None
         self._manifest_url: str | None = None
         self._all_canvases: list[dict[str, Any]] | None = None
@@ -234,7 +218,6 @@ class Downloader:
 
     @staticmethod
     def _pad_numeric_label(label: str, width: int) -> str:
-        """Pad the last numeric component while preserving label semantics."""
         matches = list(finditer(r'\d+', label))
         if not matches:
             return label
@@ -265,15 +248,11 @@ class Downloader:
         return result
 
     def print_gallery_info(self) -> None:
-        """Write the gallery's IIIF metadata to stdout."""
         for entry in self.manifest['metadata']:
-            label = entry['label']
-            value = entry['value']
-            print(f'{label:<25}{value}')
+            print(f"{entry['label']:<25}{entry['value']}")
         print(f'{self.gallery_length} images found.')
 
     def check_dir(self, parentdir: str | None = None, interactive: bool = True) -> None:
-        """Ensure the output directory exists, prompting the user on conflict."""
         current = self.dirname
         if parentdir is not None:
             self.dirname = Path(parentdir) / current
@@ -288,20 +267,21 @@ class Downloader:
         else:
             mkdir(self.dirname)
 
-    def _thread_main(self, item: DownloadItem, cancel: threading.Event | None) -> int:
+    def _thread_main(self, item: DownloadItem, size: int, cancel: threading.Event | None) -> provenance.ImageRecord:
         label = slugify(str(item.canvas.get('label', ''))) or item.stem
         temp_name: str | None = None
         try:
             if cancel is not None and cancel.is_set():
-                return 0
+                raise CancelledError
             http_reply = http.fetch(self.session, item.source_url)
             if cancel is not None and cancel.is_set():
-                return 0
+                raise CancelledError
             content_type = http.get_content_type(http_reply)
             extension = guess_extension(content_type)
             if not extension:
                 raise RuntimeError(f'{item.source_url}: Unable to guess extension "{content_type}"')
             filename = self.dirname / f'{item.stem}{extension}'
+            content = http_reply.content
 
             with NamedTemporaryFile(
                 mode='wb',
@@ -311,14 +291,24 @@ class Downloader:
                 delete=False,
             ) as img_file:
                 temp_name = img_file.name
-                img_file.write(http_reply.content)
+                img_file.write(content)
                 img_file.flush()
                 os.fsync(img_file.fileno())
             if cancel is not None and cancel.is_set():
-                return 0
+                raise CancelledError
             os.replace(temp_name, filename)
             temp_name = None
-            return len(http_reply.content)
+            return provenance.ImageRecord.create(
+                canvas_id=str(item.canvas.get('@id', '')),
+                label=str(item.canvas.get('label', '')),
+                source_url=item.source_url,
+                filename=filename.name,
+                requested_size=size,
+                byte_size=len(content),
+                sha256=sha256(content).hexdigest(),
+            )
+        except CancelledError:
+            raise
         except (RequestException, AntenatiError, OSError, RuntimeError) as ex:
             logger.warning('Image %s failed: %s', label, ex)
             raise ThreadError(label) from ex
@@ -327,6 +317,18 @@ class Downloader:
                 with suppress(FileNotFoundError):
                     os.unlink(temp_name)
 
+    def _persist_provenance(self, size: int, records: list[provenance.ImageRecord]) -> None:
+        provenance.write_provenance(
+            self.dirname,
+            source_url=self.url,
+            manifest_url=self.manifest_url,
+            manifest=self.manifest,
+            archive_id=self.archive_id,
+            ark_id=self.ark_id,
+            requested_size=size,
+            records=sorted(records, key=lambda record: record.filename),
+        )
+
     def run(
         self,
         n_workers: int,
@@ -334,7 +336,6 @@ class Downloader:
         progress: ProgressBar,
         cancel: threading.Event | None = None,
     ) -> DownloadReport:
-        """Execute the selected plan and return a structured outcome report."""
         plan = self.plan(size)
         progress.set_total(plan.expected)
         if cancel is not None and cancel.is_set():
@@ -345,10 +346,11 @@ class Downloader:
         completed = 0
         bytes_written = 0
         failures: list[PageFailure] = []
+        records: list[provenance.ImageRecord] = []
         cancelled = False
 
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
-            futures = {executor.submit(self._thread_main, item, cancel) for item in plan.items}
+            futures = {executor.submit(self._thread_main, item, size, cancel) for item in plan.items}
             for future in as_completed(futures):
                 if cancel is not None and cancel.is_set():
                     cancelled = True
@@ -359,18 +361,17 @@ class Downloader:
                 attempted += 1
                 progress.update()
                 try:
-                    written = future.result()
+                    record = future.result()
                 except CancelledError:
                     cancelled = True
                 except ThreadError as ex:
                     failures.append(PageFailure(ex.label, str(ex.__cause__)))
                 else:
-                    if written > 0:
-                        completed += 1
-                        bytes_written += written
-                    elif cancel is not None and cancel.is_set():
-                        cancelled = True
+                    completed += 1
+                    bytes_written += record.byte_size
+                    records.append(record)
 
+        self._persist_provenance(size, records)
         return DownloadReport(
             expected=plan.expected,
             attempted=attempted,
