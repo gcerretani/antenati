@@ -3,7 +3,8 @@ name: Live download
 on:
   # Run on demand from the Actions tab.
   workflow_dispatch:
-  # Daily canary so we hear early if SAN changes the gallery shape.
+  # Daily canary so we hear early if SAN changes the gallery shape or one of
+  # the public IIIF layers becomes unavailable.
   schedule:
     - cron: '23 5 * * *'
 
@@ -11,20 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  live:
-    name: Live download against Portale Antenati
+  gallery-html:
+    name: Canary - gallery HTML
     runs-on: ubuntu-24.04
-    # This job does not gate PRs: the workflow has no push/pull_request
-    # trigger, so a red run here never blocks unrelated work. A failure is
-    # therefore allowed to surface normally, as a failed run with the usual
-    # GitHub notification.
-    #
-    # Expect occasional false positives: the Portale is intermittently slow,
-    # under WAF challenge, or returning 5xx from the IIIF backend. The
-    # urllib3 Retry policy in antenati.http already absorbs the short-lived
-    # ones, so a failure here generally means the SAN was actually down.
-    # Re-run the job before investigating a single isolated failure; a
-    # failure repeating across days is the signal worth chasing.
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
@@ -41,5 +31,52 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e ".[dev]"
 
-    - name: Run integration tests against the live API
-      run: pytest -m integration -v
+    - name: Check gallery HTML and manifest discovery
+      timeout-minutes: 2
+      run: pytest -m integration tests/integration/test_live_download.py::test_gallery_html_canary -v
+
+  direct-manifest:
+    name: Canary - direct IIIF manifest
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - name: Install package + test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Check direct manifest backend
+      timeout-minutes: 2
+      run: pytest -m integration tests/integration/test_live_download.py::test_direct_manifest_canary -v
+
+  image-download:
+    name: Canary - IIIF image download
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - name: Install package + test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Download one live IIIF image
+      timeout-minutes: 2
+      run: pytest -m integration tests/integration/test_live_download.py::test_image_download_canary -v
