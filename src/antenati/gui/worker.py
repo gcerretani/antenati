@@ -11,40 +11,33 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from antenati.downloader import DEFAULT_N_THREADS, DownloadReport, Downloader, ProgressBar
+from antenati.validation import DownloadOptions
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class Progress:
-    """Total work-units have been announced by the downloader."""
-
     total: int
 
 
 @dataclass(frozen=True)
 class Tick:
-    """A single image finished (success or failure)."""
+    pass
 
 
 @dataclass(frozen=True)
 class Done:
-    """Execution finished; ``report`` contains the complete outcome."""
-
     report: DownloadReport
 
 
 @dataclass(frozen=True)
 class Cancelled:
-    """The user clicked Cancel and the worker honoured the request."""
-
     report: DownloadReport
 
 
 @dataclass(frozen=True)
 class Failed:
-    """The worker hit an unrecoverable error before producing a report."""
-
     message: str
 
 
@@ -53,14 +46,27 @@ WorkerEvent = Progress | Tick | Done | Cancelled | Failed
 
 @dataclass
 class DownloadParams:
-    """Inputs the worker needs to start a download."""
-
     url: str
     parent_dir: str
     size: int
     first: int
     last: int | None
     n_workers: int = DEFAULT_N_THREADS
+
+    def options(self) -> DownloadOptions:
+        return DownloadOptions(first=self.first, last=self.last, size=self.size, n_workers=self.n_workers)
+
+    def validate(self) -> DownloadParams:
+        self.options().validate()
+        if not self.url.strip():
+            from antenati.errors import ValidationError
+
+            raise ValidationError('url must not be empty')
+        if not self.parent_dir.strip():
+            from antenati.errors import ValidationError
+
+            raise ValidationError('destination folder must not be empty')
+        return self
 
 
 class DownloaderFactory(Protocol):
@@ -72,8 +78,6 @@ def _default_factory(url: str, first: int, last: int | None) -> Downloader:
 
 
 class DownloadWorker:
-    """Run a download on a background thread, surface events on a Queue."""
-
     def __init__(self, factory: DownloaderFactory = _default_factory) -> None:
         self._factory = factory
         self.events: queue.Queue[WorkerEvent] = queue.Queue()
@@ -81,6 +85,7 @@ class DownloadWorker:
         self._thread: threading.Thread | None = None
 
     def start(self, params: DownloadParams) -> None:
+        params.validate()
         if self._thread is not None and self._thread.is_alive():
             raise RuntimeError('A download is already in progress')
         self._cancel.clear()
@@ -99,6 +104,7 @@ class DownloadWorker:
 
     def _run(self, params: DownloadParams) -> None:
         try:
+            params.validate()
             downloader = self._factory(params.url, params.first, params.last)
             downloader.load()
             downloader.check_dir(params.parent_dir, interactive=False)

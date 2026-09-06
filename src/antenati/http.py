@@ -12,7 +12,7 @@ from requests.adapters import HTTPAdapter
 from requests.utils import default_headers
 from urllib3.util.retry import Retry
 
-from antenati.errors import WafChallengeError
+from antenati.errors import HttpMetadataError, WafChallengeError
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,6 @@ def build_session() -> Session:
 
 
 def fetch(session: Session, url: str, *, stream: bool = False) -> Response:
-    """GET ``url`` with retries/timeouts; optionally leave the body streamed."""
     logger.debug('GET %s', url)
     reply = session.get(url, timeout=DEFAULT_TIMEOUT, stream=stream)
     reply.raise_for_status()
@@ -78,10 +77,9 @@ def fetch(session: Session, url: str, *, stream: bool = False) -> Response:
 
 
 def get_content_type(reply: Response) -> str:
-    """Return the bare content type or raise a controlled error if absent."""
     raw = reply.headers.get('Content-Type')
     if not raw:
-        raise ValueError(f'{reply.url}: response has no Content-Type header')
+        raise HttpMetadataError(f'{reply.url}: response has no Content-Type header')
     msg = Message()
     msg['Content-Type'] = raw
     return msg.get_content_type()

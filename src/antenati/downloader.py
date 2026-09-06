@@ -27,6 +27,7 @@ from slugify import slugify
 from antenati import http, iiif, provenance
 from antenati import image as image_validation
 from antenati.errors import AntenatiError, ResourceLimitError, ThreadError
+from antenati.validation import DownloadOptions, validate_download_options, validate_page_range
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +95,6 @@ class DownloadReport:
 
 
 class _ByteBudget:
-    """Thread-safe total-transfer budget shared by image workers."""
-
     def __init__(self, limit: int):
         self._limit = limit
         self._used = 0
@@ -119,6 +118,11 @@ class Downloader:
         descriptive_names: bool = False,
         limits: DownloadLimits | None = None,
     ):
+        validate_page_range(first, last)
+        if not url.strip():
+            from antenati.errors import ValidationError
+
+            raise ValidationError('url must not be empty')
         self.url = url
         self.first = first
         self.last = last
@@ -204,9 +208,7 @@ class Downloader:
         manifest, manifest_url = self._load_manifest()
         all_canvases = iiif.slice_canvases(manifest, 0, None)
         if len(all_canvases) > self.limits.max_canvases:
-            raise ResourceLimitError(
-                f'Manifest contains {len(all_canvases)} canvases; limit is {self.limits.max_canvases}'
-            )
+            raise ResourceLimitError(f'Manifest contains {len(all_canvases)} canvases; limit is {self.limits.max_canvases}')
         canvases = iiif.slice_canvases(manifest, self.first, self.last)
         if archive_id is None:
             archive_id = iiif.get_archive_id_from_canvases(all_canvases)
@@ -221,6 +223,10 @@ class Downloader:
         return self
 
     def plan(self, size: int = DEFAULT_SIZE) -> DownloadPlan:
+        if size < 0:
+            from antenati.errors import ValidationError
+
+            raise ValidationError('size must be >= 0')
         self.load()
         if self._plan is not None and self._plan.size == size:
             return self._plan
@@ -336,7 +342,6 @@ class Downloader:
             filename = self.dirname / f'{item.stem}{extension}'
             digest = sha256()
             byte_size = 0
-
             with NamedTemporaryFile(
                 mode='wb',
                 dir=self.dirname,
@@ -352,15 +357,12 @@ class Downloader:
                         raise CancelledError
                     byte_size += len(chunk)
                     if byte_size > self.limits.max_image_bytes:
-                        raise ResourceLimitError(
-                            f'{item.source_url}: image exceeded {self.limits.max_image_bytes} byte limit'
-                        )
+                        raise ResourceLimitError(f'{item.source_url}: image exceeded {self.limits.max_image_bytes} byte limit')
                     budget.consume(len(chunk))
                     img_file.write(chunk)
                     digest.update(chunk)
                 img_file.flush()
                 os.fsync(img_file.fileno())
-
             image_validation.validate_image_file(content_type, Path(temp_name))
             if cancel is not None and cancel.is_set():
                 raise CancelledError
@@ -410,6 +412,7 @@ class Downloader:
         limit: int,
         submit: Callable[[DownloadItem], Future[provenance.ImageRecord]],
     ) -> None:
+        del executor
         while len(futures) < limit:
             try:
                 item = next(items)
@@ -427,12 +430,12 @@ class Downloader:
         *,
         resume: bool = False,
     ) -> DownloadReport:
+        validate_download_options(DownloadOptions(first=self.first, last=self.last, size=size, n_workers=n_workers))
         plan = self.plan(size)
         progress.set_total(plan.expected)
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any image work was submitted')
             return DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
-
         verified = (
             provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
         )
@@ -447,7 +450,6 @@ class Downloader:
                 records.append(existing)
                 skipped += 1
                 progress.update()
-
         attempted = 0
         completed = 0
         bytes_written = 0
@@ -457,8 +459,8 @@ class Downloader:
         item_iter = iter(pending)
         in_flight: dict[Future[provenance.ImageRecord], DownloadItem] = {}
         in_flight_limit = self._in_flight_limit(n_workers)
-
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
+
             def submit(item: DownloadItem) -> Future[provenance.ImageRecord]:
                 return executor.submit(self._thread_main, item, size, cancel, budget)
 
@@ -487,7 +489,6 @@ class Downloader:
                         records.append(record)
                 if not cancelled:
                     self._fill_futures(executor, item_iter, in_flight, in_flight_limit, submit)
-
         self._persist_provenance(size, records)
         return DownloadReport(
             expected=plan.expected,

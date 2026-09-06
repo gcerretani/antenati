@@ -9,12 +9,20 @@ class AntenatiError(Exception):
     """Base class for all antenati-specific errors."""
 
 
+class ValidationError(AntenatiError):
+    """User-supplied download options are invalid."""
+
+
 class ManifestError(AntenatiError):
     """The IIIF manifest is missing a required field or has an unexpected shape."""
 
 
 class ImageValidationError(AntenatiError):
     """A downloaded response is not a supported, internally consistent image."""
+
+
+class HttpMetadataError(AntenatiError):
+    """An HTTP response is missing required metadata."""
 
 
 class ResourceLimitError(AntenatiError):
