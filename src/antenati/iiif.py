@@ -12,6 +12,7 @@ from antenati.errors import ManifestError
 
 _MANIFEST_ASSIGNMENT_PATTERN: str = r"""manifestId\s*[:=]\s*['"](https?://[^'"]+)['"]"""
 _ARCHIVE_ID_PATTERN: str = r'/an_ua(\d+)(?:/|$)'
+_CANVAS_ARCHIVE_ID_PATTERN: str = r'/iiif-(\d+)(?:/|$)'
 
 META_CONTEXT: str = 'Contesto archivistico'
 META_TITLE: str = 'Titolo'
@@ -37,7 +38,11 @@ def get_archive_id_from_canvases(canvases: list[dict[str, Any]]) -> str:
         canonical_url = canvases[0]['@id']
     except (KeyError, IndexError, TypeError) as exc:
         raise ManifestError("Canvas has no '@id' field") from exc
-    return get_archive_id_from_url(canonical_url)
+    path = urlsplit(canonical_url).path
+    match = search(_ARCHIVE_ID_PATTERN, path) or search(_CANVAS_ARCHIVE_ID_PATTERN, path)
+    if not match:
+        raise ManifestError(f'Cannot get archive ID from {canonical_url}')
+    return match.group(1)
 
 
 def get_ark_id_from_url(url: str) -> str | None:
@@ -56,9 +61,11 @@ def get_image_id_from_url(url: str) -> str:
 
 def parse_manifest_url_from_html(html: str, source_url: str) -> str:
     """Extract the URL specifically assigned to ``manifestId``."""
+    if 'manifestId' not in html:
+        raise ManifestError(f'No IIIF manifest found at {source_url}')
     match = search(_MANIFEST_ASSIGNMENT_PATTERN, html)
     if not match:
-        raise ManifestError(f'No valid IIIF manifest found at {source_url}')
+        raise ManifestError(f'Invalid IIIF manifest line at {source_url}')
     return match.group(1)
 
 
