@@ -12,7 +12,6 @@ from typing import Protocol
 
 from antenati.config import DownloadConfig
 from antenati.downloader import Downloader, DownloadReport, ProgressBar
-from antenati.gui.worker import *
 from antenati.output import ExistingPolicy, prepare_output, run_with_policy
 
 logger = logging.getLogger(__name__)
