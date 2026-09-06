@@ -16,6 +16,7 @@ from antenati.downloader import Downloader, DownloadItem, DownloadReport, Progre
 class ExistingPolicy(str, Enum):
     """How to handle a destination that already contains planned files."""
 
+    ASK = 'ask'
     ERROR = 'error'
     OVERWRITE = 'overwrite'
     SKIP = 'skip'
@@ -34,9 +35,27 @@ def planned_path(directory: Path, item: DownloadItem) -> Path:
     return directory / f'{item.stem}{suffix}'
 
 
+def output_directory(downloader: Downloader, output: str | Path | None) -> Path:
+    """Return the exact output path selected for a run."""
+    return Path(output) if output is not None else downloader.dirname
+
+
+def existing_output_requires_decision(downloader: Downloader, output: str | Path | None) -> bool:
+    """Return whether ``ask`` needs the interface to choose a concrete policy."""
+    directory = output_directory(downloader, output)
+    return directory.exists() and directory.is_dir() and any(directory.iterdir())
+
+
 def prepare_output(downloader: Downloader, output: str | Path | None, policy: ExistingPolicy) -> Path:
-    """Resolve/create the exact destination directory according to ``policy``."""
-    directory = Path(output) if output is not None else downloader.dirname
+    """Resolve/create the exact destination directory according to ``policy``.
+
+    ``ask`` is intentionally not handled here: interaction belongs to the CLI
+    or GUI. Those surfaces must resolve it to a concrete policy first.
+    """
+    if policy is ExistingPolicy.ASK:
+        raise RuntimeError('ExistingPolicy.ASK must be resolved by the interface before execution')
+
+    directory = output_directory(downloader, output)
     downloader.dirname = directory
     if directory.exists():
         if not directory.is_dir():
@@ -81,8 +100,10 @@ def run_with_policy(
     downloads planned pages. ``resume`` reuses only hash-verified provenance
     and redownloads stale/corrupt files. ``skip`` also reuses verified files,
     but refuses to overwrite an unverified file that already occupies a
-    planned path.
+    planned path. ``ask`` must be resolved by the interface before this point.
     """
+    if policy is ExistingPolicy.ASK:
+        raise RuntimeError('ExistingPolicy.ASK must be resolved by the interface before execution')
     if policy is ExistingPolicy.SKIP:
         _validate_skip_policy(downloader, size)
     return downloader.run(
