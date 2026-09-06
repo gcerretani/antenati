@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -46,7 +47,9 @@ def test_run_downloads_all_images_and_returns_consistent_report(mocked_http, dow
     assert report.expected == report.attempted == report.completed == 3
     assert report.bytes_written == 3 * len(TINY_JPEG)
     assert _image_files(downloader_in_tmp.dirname) == ['0001.jpg', '0002.jpg', '0003.jpg']
-    assert (downloader_in_tmp.dirname / '.antenati-index.json').is_file()
+    assert (downloader_in_tmp.dirname / '.antenati-manifest.json').is_file()
+    index = json.loads((downloader_in_tmp.dirname / '.antenati-index.json').read_text(encoding='utf-8'))
+    assert len(index['images']) == 3
 
 
 def test_run_uses_constrained_size_urls(mocked_http, downloader_in_tmp: Downloader) -> None:

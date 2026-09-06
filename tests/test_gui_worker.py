@@ -10,6 +10,7 @@ import pytest
 
 from antenati.downloader import DownloadReport, ProgressBar
 from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Progress, Tick
+from antenati.output import ExistingPolicy
 
 
 class _FakeDownloader:
@@ -49,7 +50,14 @@ def _drain_events(worker: DownloadWorker, timeout: float = 2.0) -> list[Any]:
 
 
 def _params(tmp_path: Path) -> DownloadParams:
-    return DownloadParams(url='https://example.org/gallery', output_dir=str(tmp_path / 'out'), size=0, first=0, last=None)
+    return DownloadParams(
+        url='https://example.org/gallery',
+        output_dir=str(tmp_path / 'out'),
+        size=0,
+        first=0,
+        last=None,
+        existing_policy=ExistingPolicy.OVERWRITE,
+    )
 
 
 def test_happy_path_emits_progress_ticks_and_done(tmp_path: Path) -> None:
