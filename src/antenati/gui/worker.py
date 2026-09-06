@@ -12,7 +12,8 @@ from typing import Protocol
 
 from antenati.config import DownloadConfig
 from antenati.downloader import Downloader, DownloadReport, ProgressBar
-from antenati.output import prepare_output, run_with_policy
+from antenati.gui.worker import *
+from antenati.output import ExistingPolicy, prepare_output, run_with_policy
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,8 @@ class DownloadWorker:
 
     def start(self, params: DownloadParams) -> None:
         params.validate(require_output=True)
+        if params.existing_policy is ExistingPolicy.ASK:
+            raise RuntimeError('ExistingPolicy.ASK must be resolved by the GUI before starting the worker')
         if self._thread is not None and self._thread.is_alive():
             raise RuntimeError('A download is already in progress')
         self._cancel.clear()
