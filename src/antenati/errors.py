@@ -17,6 +17,10 @@ class ImageValidationError(AntenatiError):
     """A downloaded response is not a supported, internally consistent image."""
 
 
+class ResourceLimitError(AntenatiError):
+    """A configured safety limit was exceeded."""
+
+
 class WafChallengeError(AntenatiError):
     """The SAN server returned an AWS WAF challenge response that cannot be bypassed."""
 
