@@ -17,15 +17,7 @@ from humanize import naturalsize
 from antenati import __contact__, __copyright__, __version__
 from antenati.downloader import DEFAULT_SIZE
 from antenati.gui.progress import TkProgress
-from antenati.gui.worker import (
-    Cancelled,
-    Done,
-    DownloadParams,
-    DownloadWorker,
-    Failed,
-    Progress,
-    Tick,
-)
+from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Progress, Tick
 
 logger = logging.getLogger(__name__)
 
@@ -54,15 +46,11 @@ class App:
 
         self._worker = DownloadWorker()
         self._progress: TkProgress | None = None
-
-    # --- UI construction --------------------------------------------------
+        self._terminal_received = True
 
     def _build_menu(self) -> None:
         menu_file = tk.Menu(self._menu, tearoff=0)
-        menu_file.add_command(
-            label='Portale Antenati Website',
-            command=lambda: webopen('https://antenati.cultura.gov.it/'),
-        )
+        menu_file.add_command(label='Portale Antenati Website', command=lambda: webopen('https://antenati.cultura.gov.it/'))
         menu_file.add_command(label='Project Website', command=lambda: webopen(__contact__))
         menu_file.add_separator()
         menu_file.add_command(label='About', command=self._show_about)
@@ -98,11 +86,7 @@ class App:
         self._download_button.grid(row=3, column=1, padx=5, pady=5)
         self._cancel_button = ttk.Button(entry_frame, text='Cancel', command=self._on_cancel, state=tk.DISABLED)
         self._cancel_button.grid(row=3, column=2, padx=5, pady=5)
-        ttk.Button(
-            entry_frame,
-            text='Support this project',
-            command=lambda: webopen('https://ko-fi.com/gcerretani'),
-        ).grid(row=3, column=3, padx=5, pady=5)
+        ttk.Button(entry_frame, text='Support this project', command=lambda: webopen('https://ko-fi.com/gcerretani')).grid(row=3, column=3, padx=5, pady=5)
 
     def _build_footer(self) -> None:
         footer_frame = ttk.Frame(self._root)
@@ -112,8 +96,6 @@ class App:
         footer_frame.columnconfigure(0, weight=1)
         self._progress_bar = ttk.Progressbar(self._root, mode='determinate', orient=tk.HORIZONTAL)
         self._progress_bar.pack(side=tk.BOTTOM, fill=tk.BOTH, padx=2, pady=2)
-
-    # --- Event handlers ---------------------------------------------------
 
     def _show_about(self) -> None:
         msg = 'antenati: a tool to download data from the Portale Antenati\n'
@@ -137,15 +119,10 @@ class App:
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
 
-        params = DownloadParams(
-            url=url,
-            parent_dir=path_value,
-            size=self._size.get(),
-            first=int(self._first.get()),
-            last=last_val,
-        )
+        params = DownloadParams(url=url, parent_dir=path_value, size=self._size.get(), first=int(self._first.get()), last=last_val)
 
         self._progress = TkProgress(self._progress_bar)
+        self._terminal_received = False
         self._set_running(True)
         self._worker.start(params)
         self._root.after(_POLL_INTERVAL_MS, self._drain_events)
@@ -162,7 +139,11 @@ class App:
                 self._handle_event(event)
         except queue.Empty:
             pass
-        if self._worker.is_running():
+        # Do not use worker liveness as the completion signal.  The worker can
+        # enqueue Done/Failed and exit between the empty-queue check and the
+        # liveness check; polling until the terminal event is consumed closes
+        # that race.
+        if not self._terminal_received:
             self._root.after(_POLL_INTERVAL_MS, self._drain_events)
 
     def _handle_event(self, event: object) -> None:
@@ -173,15 +154,15 @@ class App:
             if self._progress is not None:
                 self._progress.update()
         elif isinstance(event, Done):
+            self._terminal_received = True
             self._set_running(False)
-            tkmsg.showinfo(
-                'Success',
-                f'Operation completed successfully. Total size: {naturalsize(event.total_bytes, True)}',
-            )
+            tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(event.total_bytes, True)}')
         elif isinstance(event, Cancelled):
+            self._terminal_received = True
             self._set_running(False)
             tkmsg.showinfo('Cancelled', 'Download cancelled.')
         elif isinstance(event, Failed):
+            self._terminal_received = True
             self._set_running(False)
             tkmsg.showerror('Error', event.message)
 
