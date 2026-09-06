@@ -1,6 +1,17 @@
 # SPDX-FileCopyrightText: 2018 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Core download orchestration for the Portale Antenati."""
+"""Core download orchestration for the Portale Antenati.
+
+The :class:`Downloader` is the main entry point used by both the CLI
+(:mod:`antenati.cli`) and the GUI (:mod:`antenati.gui`). It composes the
+side-effect-free helpers from :mod:`antenati.iiif` with the HTTP session
+built in :mod:`antenati.http`, and runs per-canvas image downloads in a
+thread pool.
+
+Keeping orchestration separate from CLI/GUI plumbing makes the downloader
+usable from third-party scripts and keeps network, parsing and presentation
+concerns reasonably isolated.
+"""
 
 from __future__ import annotations
 
@@ -34,7 +45,12 @@ DEFAULT_N_THREADS: int = 2
 
 @dataclass
 class ProgressBar:
-    """Callback pair used to drive a progress indicator."""
+    """Callback pair used to drive a progress indicator.
+
+    Both callbacks are invoked by the orchestration thread. CLI callers can
+    update counters directly; GUI callers can marshal updates to their UI
+    thread inside the callbacks.
+    """
 
     set_total: Callable[[int], None]
     update: Callable[[], None]
@@ -57,6 +73,11 @@ class Downloader:
         self.url = url
         self.session = http.build_session()
         self.descriptive_names = descriptive_names
+
+        # Gallery URLs embed the archive ID in their ARK path, so validate and
+        # extract it before the first network request. A direct manifest URL
+        # does not necessarily contain that identifier; in that case it is
+        # recovered from the first selected canvas after loading the manifest.
         archive_id = None if iiif.is_manifest_url(url) else iiif.get_archive_id_from_url(url)
         logger.info('Loading manifest from %s', url)
         self.manifest = self.__load_manifest()
@@ -76,6 +97,10 @@ class Downloader:
 
     def __load_manifest(self) -> dict[str, Any]:
         if iiif.is_manifest_url(self.url):
+            # The direct IIIF manifest is a useful alternate entry point when
+            # the public gallery HTML is blocked by the AWS WAF (issue #25).
+            # Keeping this path explicit also avoids scraping HTML when the
+            # caller already knows the canonical manifest URL.
             manifest_url = self.url
         else:
             gallery_reply = http.fetch(self.session, self.url)
@@ -172,6 +197,9 @@ class Downloader:
                 raise RuntimeError(f'{url}: Unable to guess extension "{content_type}"')
             filename = self.dirname / f'{stem}{extension}'
 
+            # Write in the destination directory so os.replace() stays on the
+            # same filesystem and is atomic. The final path is touched only
+            # after the whole response has been written and flushed.
             with NamedTemporaryFile(
                 mode='wb',
                 dir=self.dirname,
@@ -192,6 +220,8 @@ class Downloader:
             logger.warning('Image %s failed: %s', label, ex)
             raise ThreadError(label) from ex
         finally:
+            # Cancellation and failures must not leave temporary files that
+            # look like completed downloads on a subsequent run.
             if temp_name is not None:
                 with suppress(FileNotFoundError):
                     os.unlink(temp_name)
@@ -203,7 +233,13 @@ class Downloader:
         progress: ProgressBar,
         cancel: threading.Event | None = None,
     ) -> int:
-        """Download all canvases concurrently. Returns total bytes written."""
+        """Download all selected canvases concurrently and return bytes written.
+
+        A cancellation that is already set prevents any image work from being
+        submitted. During an active run, queued futures are cancelled when
+        possible; workers already inside an HTTP request rely on the bounded
+        connect/read timeouts in :mod:`antenati.http` before they can return.
+        """
         progress.set_total(self.gallery_length)
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any work was submitted')
