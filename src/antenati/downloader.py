@@ -437,7 +437,10 @@ class Downloader:
             logger.info('Download cancelled before any image work was submitted')
             return DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
         verified = provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
-        records: list[provenance.ImageRecord] = []
+        plan_keys = {self._resume_key(item) for item in plan.items}
+        records: list[provenance.ImageRecord] = provenance.carry_over_records(
+            self.dirname, manifest_url=self.manifest_url, requested_size=size, exclude_keys=plan_keys
+        )
         pending: list[DownloadItem] = []
         skipped = 0
         for item in plan.items:

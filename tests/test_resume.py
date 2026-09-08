@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import responses
 
 from antenati import Downloader, ProgressBar
+from antenati.provenance import INDEX_FILENAME
 from tests.conftest import GALLERY_URL, TINY_JPEG
 
 
@@ -69,3 +71,33 @@ def test_resume_does_not_reuse_different_resolution(mocked_http, tmp_path: Path)
 
     assert report.skipped == 0
     assert report.completed == 1
+
+
+def test_resume_preserves_provenance_outside_requested_range(mocked_http, tmp_path: Path) -> None:
+    full = Downloader(GALLERY_URL, first=0, last=None)
+    full.check_dir(parentdir=str(tmp_path), interactive=False)
+    for n in (1, 2, 3):
+        mocked_http.add(
+            responses.GET,
+            f'https://iiif.example.org/iiif/img{n}/full/pct:100/0/default.jpg',
+            body=TINY_JPEG,
+            status=200,
+            content_type='image/jpeg',
+        )
+    report = full.run(n_workers=1, size=0, progress=_null_progress())
+    assert report.successful
+
+    narrow = Downloader(GALLERY_URL, first=1, last=2)
+    narrow.load()
+    narrow.dirname = full.dirname
+    before_calls = len(mocked_http.calls)
+
+    report = narrow.run(n_workers=1, size=0, progress=_null_progress(), resume=True)
+
+    assert report.successful
+    assert report.skipped == 1
+    assert len(mocked_http.calls) == before_calls
+
+    index = json.loads((full.dirname / INDEX_FILENAME).read_text(encoding='utf-8'))
+    filenames = {record['filename'] for record in index['images']}
+    assert filenames == {'0001.jpg', '0002.jpg', '0003.jpg'}

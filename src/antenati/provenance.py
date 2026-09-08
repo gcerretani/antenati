@@ -7,6 +7,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -151,13 +152,13 @@ def read_index(directory: Path) -> dict[str, Any] | None:
     return data
 
 
-def verified_resume_records(
+def _indexed_records(
     directory: Path,
     *,
     manifest_url: str,
     requested_size: int,
 ) -> dict[tuple[str, str], ImageRecord]:
-    """Return only records safe to reuse for this manifest and resolution."""
+    """Return every record from the index that matches this manifest and resolution."""
     index = read_index(directory)
     if index is None:
         return {}
@@ -168,10 +169,10 @@ def verified_resume_records(
     if index.get('requested_size') != requested_size:
         return {}
 
-    result: dict[tuple[str, str], ImageRecord] = {}
     images = index.get('images', [])
     if not isinstance(images, list):
         return {}
+    result: dict[tuple[str, str], ImageRecord] = {}
     for raw in images:
         if not isinstance(raw, dict):
             continue
@@ -179,7 +180,28 @@ def verified_resume_records(
             record = ImageRecord.from_mapping(raw)
         except ValueError:
             continue
-        if record.requested_size != requested_size or not verify_record(directory, record):
-            continue
         result[(record.canvas_id, record.source_url)] = record
     return result
+
+
+def verified_resume_records(
+    directory: Path,
+    *,
+    manifest_url: str,
+    requested_size: int,
+) -> dict[tuple[str, str], ImageRecord]:
+    """Return only records safe to reuse for this manifest and resolution."""
+    candidates = _indexed_records(directory, manifest_url=manifest_url, requested_size=requested_size)
+    return {key: record for key, record in candidates.items() if verify_record(directory, record)}
+
+
+def carry_over_records(
+    directory: Path,
+    *,
+    manifest_url: str,
+    requested_size: int,
+    exclude_keys: Collection[tuple[str, str]],
+) -> list[ImageRecord]:
+    """Return previously indexed records outside this run's plan, so a rewrite doesn't drop them."""
+    candidates = _indexed_records(directory, manifest_url=manifest_url, requested_size=requested_size)
+    return [record for key, record in candidates.items() if key not in exclude_keys]
