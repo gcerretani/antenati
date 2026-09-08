@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 import responses
+from requests import Response
 
 from antenati import http as antenati_http
 from antenati.errors import WafChallengeError
@@ -41,6 +44,21 @@ def test_fetch_raises_on_http_error() -> None:
         )
         with pytest.raises(Exception):  # noqa: B017 - requests.HTTPError subclass
             antenati_http.fetch(session, 'https://example.org/boom')
+
+
+def test_fetch_closes_response_on_http_error() -> None:
+    session = antenati_http.build_session()
+    with responses.RequestsMock() as rsps:
+        rsps.add(
+            responses.GET,
+            'https://example.org/boom-stream',
+            body='nope',
+            status=500,
+            content_type='text/plain',
+        )
+        with patch.object(Response, 'close', autospec=True) as mock_close, pytest.raises(Exception):  # noqa: B017
+            antenati_http.fetch(session, 'https://example.org/boom-stream', stream=True)
+    assert mock_close.called
 
 
 def test_fetch_raises_on_waf_challenge() -> None:

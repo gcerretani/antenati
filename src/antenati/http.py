@@ -61,15 +61,19 @@ def build_session() -> Session:
 def fetch(session: Session, url: str, *, stream: bool = False) -> Response:
     logger.debug('GET %s', url)
     reply = session.get(url, timeout=DEFAULT_TIMEOUT, stream=stream)
-    reply.raise_for_status()
-    if reply.status_code == WAF_CHALLENGE_STATUS and reply.headers.get(WAF_CHALLENGE_HEADER) == WAF_CHALLENGE_VALUE:
-        logger.warning('WAF challenge received from %s', reply.url)
-        raise WafChallengeError(
-            f'{reply.url}: AWS WAF challenge cannot be bypassed. '
-            'Workaround: open the gallery page in a browser, copy the "IIIF manifest" link '
-            'at the bottom of the left panel and pass that URL to this tool instead. '
-            'See https://github.com/gcerretani/antenati/issues/25 for details.'
-        )
+    try:
+        reply.raise_for_status()
+        if reply.status_code == WAF_CHALLENGE_STATUS and reply.headers.get(WAF_CHALLENGE_HEADER) == WAF_CHALLENGE_VALUE:
+            logger.warning('WAF challenge received from %s', reply.url)
+            raise WafChallengeError(
+                f'{reply.url}: AWS WAF challenge cannot be bypassed. '
+                'Workaround: open the gallery page in a browser, copy the "IIIF manifest" link '
+                'at the bottom of the left panel and pass that URL to this tool instead. '
+                'See https://github.com/gcerretani/antenati/issues/25 for details.'
+            )
+    except Exception:
+        reply.close()
+        raise
     return reply
 
 
