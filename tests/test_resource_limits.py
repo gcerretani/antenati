@@ -43,3 +43,30 @@ def test_in_flight_window_scales_with_workers_without_using_gallery_size() -> No
     downloader = Downloader('https://example.invalid/manifest', 0, None, limits=DownloadLimits(in_flight_factor=2))
     assert downloader._in_flight_limit(1) == 2
     assert downloader._in_flight_limit(4) == 8
+
+
+def test_failed_image_bytes_are_refunded_to_total_budget(mocked_http, tmp_path: Path) -> None:
+    corrupt_body = b'\x00' * 20
+    limits = DownloadLimits(max_total_bytes=len(corrupt_body))
+    downloader = Downloader(GALLERY_URL, first=0, last=2, limits=limits)
+    downloader.check_dir(parentdir=str(tmp_path), interactive=False)
+    mocked_http.add(
+        responses.GET,
+        'https://iiif.example.org/iiif/img1/full/pct:100/0/default.jpg',
+        body=corrupt_body,
+        status=200,
+        content_type='image/jpeg',
+    )
+    mocked_http.add(
+        responses.GET,
+        'https://iiif.example.org/iiif/img2/full/pct:100/0/default.jpg',
+        body=TINY_JPEG,
+        status=200,
+        content_type='image/jpeg',
+    )
+
+    report = downloader.run(n_workers=1, size=0, progress=_null_progress())
+
+    assert len(report.failed) == 1
+    assert report.completed == 1
+    assert (downloader.dirname / '0002.jpg').read_bytes() == TINY_JPEG

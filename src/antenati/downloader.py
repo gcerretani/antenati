@@ -106,6 +106,10 @@ class _ByteBudget:
                 raise ResourceLimitError(f'Total download budget exceeded ({self._limit} bytes)')
             self._used += amount
 
+    def release(self, amount: int) -> None:
+        with self._lock:
+            self._used = max(0, self._used - amount)
+
 
 class Downloader:
     """Plan and execute a Portale Antenati gallery download."""
@@ -333,6 +337,7 @@ class Downloader:
         label = slugify(str(item.canvas.get('label', ''))) or item.stem
         temp_name: str | None = None
         reply: Response | None = None
+        consumed = 0
         try:
             if cancel is not None and cancel.is_set():
                 raise CancelledError
@@ -359,6 +364,7 @@ class Downloader:
                     if byte_size > self.limits.max_image_bytes:
                         raise ResourceLimitError(f'{item.source_url}: image exceeded {self.limits.max_image_bytes} byte limit')
                     budget.consume(len(chunk))
+                    consumed += len(chunk)
                     img_file.write(chunk)
                     digest.update(chunk)
                 img_file.flush()
@@ -378,8 +384,10 @@ class Downloader:
                 sha256=digest.hexdigest(),
             )
         except CancelledError:
+            budget.release(consumed)
             raise
         except (RequestException, AntenatiError, OSError, RuntimeError, ValueError) as ex:
+            budget.release(consumed)
             logger.warning('Image %s failed: %s', label, ex)
             raise ThreadError(label) from ex
         finally:
