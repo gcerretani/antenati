@@ -7,7 +7,7 @@ from pathlib import Path
 import responses
 
 from antenati import Downloader, ProgressBar
-from antenati.provenance import INDEX_FILENAME, MANIFEST_FILENAME
+from antenati.provenance import INDEX_FILENAME, MANIFEST_FILENAME, ImageRecord, verify_record
 from tests.conftest import GALLERY_URL, TINY_JPEG
 
 
@@ -39,3 +39,20 @@ def test_run_persists_manifest_and_per_image_provenance(mocked_http, tmp_path: P
     assert record['filename'] == '0001.jpg'
     assert record['byte_size'] == len(TINY_JPEG)
     assert record['sha256'] == sha256(TINY_JPEG).hexdigest()
+
+
+def test_verify_record_rejects_path_traversal_filename(tmp_path: Path) -> None:
+    outside = tmp_path / 'secret.jpg'
+    outside.write_bytes(TINY_JPEG)
+    directory = tmp_path / 'gallery'
+    directory.mkdir()
+    record = ImageRecord.create(
+        canvas_id='c1',
+        label='Pag. 1',
+        source_url='https://iiif.example.org/iiif/img1/full/pct:100/0/default.jpg',
+        filename='../secret.jpg',
+        requested_size=0,
+        byte_size=len(TINY_JPEG),
+        sha256=sha256(TINY_JPEG).hexdigest(),
+    )
+    assert verify_record(directory, record) is False

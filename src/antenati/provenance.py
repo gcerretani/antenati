@@ -81,7 +81,10 @@ def file_sha256(path: Path) -> str:
 
 def verify_record(directory: Path, record: ImageRecord) -> bool:
     """Return True only when the indexed local file still matches size/hash."""
-    candidate = directory / record.filename
+    name = record.filename
+    if not name or name != Path(name).name:
+        return False
+    candidate = directory / name
     try:
         stat = candidate.stat()
     except FileNotFoundError:
