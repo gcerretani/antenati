@@ -1,9 +1,4 @@
-"""Tests for the IIIF gallery parsing path.
-
-Exercises both the pure helpers in :mod:`antenati.iiif` /
-:mod:`antenati.http` and the orchestration in
-:class:`antenati.Downloader`.
-"""
+"""Tests for the IIIF gallery parsing path."""
 
 from __future__ import annotations
 
@@ -32,9 +27,9 @@ def test_archive_id_helper_raises_when_url_lacks_two_numbers() -> None:
         antenati_iiif.get_archive_id_from_url('https://antenati.cultura.gov.it/no-numbers/')
 
 
-def test_constructor_raises_when_url_lacks_two_numbers(mocked_http) -> None:
+def test_load_raises_when_url_lacks_archive_id(mocked_http) -> None:
     with pytest.raises(ManifestError, match='Cannot get archive ID'):
-        Downloader('https://antenati.cultura.gov.it/no-numbers/', 0, None)
+        Downloader('https://antenati.cultura.gov.it/no-numbers/', 0, None).load()
 
 
 def test_manifest_is_loaded_from_gallery_html(downloader: Downloader) -> None:
@@ -70,50 +65,32 @@ def test_parse_manifest_url_no_keyword_raises() -> None:
 @pytest.mark.parametrize(
     'html',
     [
-        # Single quotes around a URL with underscores and a query string.
         "<script>var manifestId = 'https://iiif.example.org/ark:/12657/an_ua19944535/manifest?v=2';</script>",
-        # Double quotes.
         '<script>var manifestId = "https://iiif.example.org/manifest";</script>',
     ],
 )
 def test_parse_manifest_url_accepts_modern_url_shapes(html: str) -> None:
-    # Locks the post-hardening behaviour: the legacy regex rejected
-    # underscores and query strings, the new one accepts them.
     result = antenati_iiif.parse_manifest_url_from_html(html, 'src')
     assert result.startswith('https://')
 
 
-def test_constructor_raises_when_html_lacks_manifest(gallery_html: str) -> None:
+def test_load_raises_when_html_lacks_manifest() -> None:
     bad_html = '<html><body>no manifest here</body></html>'
     with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.GET,
-            GALLERY_URL,
-            body=bad_html,
-            status=200,
-            content_type='text/html; charset=utf-8',
-        )
+        rsps.add(responses.GET, GALLERY_URL, body=bad_html, status=200, content_type='text/html; charset=utf-8')
         with pytest.raises(ManifestError, match='No IIIF manifest found'):
-            Downloader(GALLERY_URL, 0, None)
+            Downloader(GALLERY_URL, 0, None).load()
 
 
-def test_constructor_raises_on_invalid_manifest_line() -> None:
-    # The ``manifestId`` keyword is present but there is no quoted URL on
-    # the line: parsing must raise a typed ManifestError.
+def test_load_raises_on_invalid_manifest_line() -> None:
     bad_html = '<script>var manifestId = noQuotesHere;</script>'
     with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.GET,
-            GALLERY_URL,
-            body=bad_html,
-            status=200,
-            content_type='text/html; charset=utf-8',
-        )
+        rsps.add(responses.GET, GALLERY_URL, body=bad_html, status=200, content_type='text/html; charset=utf-8')
         with pytest.raises(ManifestError, match='Invalid IIIF manifest line'):
-            Downloader(GALLERY_URL, 0, None)
+            Downloader(GALLERY_URL, 0, None).load()
 
 
-def test_waf_challenge_is_detected() -> None:
+def test_waf_challenge_is_detected_during_load() -> None:
     with responses.RequestsMock() as rsps:
         rsps.add(
             responses.GET,
@@ -124,19 +101,13 @@ def test_waf_challenge_is_detected() -> None:
             content_type='text/html; charset=utf-8',
         )
         with pytest.raises(WafChallengeError, match='AWS WAF challenge'):
-            Downloader(GALLERY_URL, 0, None)
+            Downloader(GALLERY_URL, 0, None).load()
 
 
 def test_get_content_type_strips_parameters() -> None:
     session = Session()
     with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.GET,
-            'https://example.org/x',
-            body='ok',
-            status=200,
-            content_type='text/html; charset=utf-8',
-        )
+        rsps.add(responses.GET, 'https://example.org/x', body='ok', status=200, content_type='text/html; charset=utf-8')
         reply = session.get('https://example.org/x')
     assert antenati_http.get_content_type(reply) == 'text/html'
 
@@ -144,13 +115,7 @@ def test_get_content_type_strips_parameters() -> None:
 def test_get_content_charset() -> None:
     session = Session()
     with responses.RequestsMock() as rsps:
-        rsps.add(
-            responses.GET,
-            'https://example.org/x',
-            body='ok',
-            status=200,
-            content_type='application/json; charset=utf-8',
-        )
+        rsps.add(responses.GET, 'https://example.org/x', body='ok', status=200, content_type='application/json; charset=utf-8')
         reply = session.get('https://example.org/x')
     assert antenati_http.get_content_charset(reply) == 'utf-8'
 
@@ -199,10 +164,8 @@ def test_image_id_raises_on_short_path() -> None:
 
 
 def test_downloader_accepts_manifest_url_directly(mocked_http) -> None:
-    # The gallery page is never fetched: only the manifest URL is hit.
-    # This is the workaround for galleries behind the AWS WAF challenge
-    # (https://github.com/gcerretani/antenati/issues/25).
     dl = Downloader(MANIFEST_URL, first=0, last=None)
+    dl.load()
     assert dl.archive_id == ARCHIVE_ID
     assert dl.gallery_length == 3
     requested = [call.request.url for call in mocked_http.calls]

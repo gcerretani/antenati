@@ -1,12 +1,8 @@
-"""End-to-end tests for ``Downloader.run`` with mocked HTTP.
-
-These tests are the main safety net: they exercise the full happy path
-(gallery -> manifest -> per-image download -> filesystem writes) and a few
-key failure modes so the upcoming refactor cannot regress them silently.
-"""
+"""End-to-end correctness tests for ``Downloader.run`` with mocked HTTP."""
 
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -24,10 +20,13 @@ def _null_progress() -> ProgressBar:
 
 
 def _image_url(canvas_label: str, size: int) -> str:
-    """Mirror ``__manipulate_url`` for the IIIF URL each canvas will fetch."""
     base = f'https://iiif.example.org/iiif/img{canvas_label[-1]}'
     size_part = f'!{size},{size}' if size > 0 else 'pct:100'
     return f'{base}/full/{size_part}/0/default.jpg'
+
+
+def _image_files(directory: Path) -> list[str]:
+    return sorted(path.name for path in directory.iterdir() if not path.name.startswith('.'))
 
 
 @pytest.fixture
@@ -36,117 +35,76 @@ def downloader_in_tmp(downloader: Downloader, tmp_path: Path) -> Downloader:
     return downloader
 
 
-def test_run_downloads_all_images_full_size(mocked_http, downloader_in_tmp: Downloader) -> None:
-    for label in ('0001', '0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, 0),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
-    total = downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
-    assert total == 3 * len(TINY_JPEG)
-    files = sorted(p.name for p in downloader_in_tmp.dirname.iterdir())
-    assert files == ['0001.jpg', '0002.jpg', '0003.jpg']
+def _register_jpegs(mocked_http, labels: tuple[str, ...], size: int = 0) -> None:
+    for label in labels:
+        mocked_http.add(responses.GET, _image_url(label, size), body=TINY_JPEG, status=200, content_type='image/jpeg')
+
+
+def test_run_downloads_all_images_and_returns_consistent_report(mocked_http, downloader_in_tmp: Downloader) -> None:
+    _register_jpegs(mocked_http, ('0001', '0002', '0003'))
+    report = downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+    assert report.successful
+    assert report.expected == report.attempted == report.completed == 3
+    assert report.bytes_written == 3 * len(TINY_JPEG)
+    assert _image_files(downloader_in_tmp.dirname) == ['0001.jpg', '0002.jpg', '0003.jpg']
+    assert (downloader_in_tmp.dirname / '.antenati-manifest.json').is_file()
+    index = json.loads((downloader_in_tmp.dirname / '.antenati-index.json').read_text(encoding='utf-8'))
+    assert len(index['images']) == 3
 
 
 def test_run_uses_constrained_size_urls(mocked_http, downloader_in_tmp: Downloader) -> None:
     size = 1234
-    for label in ('0001', '0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, size),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
-    total = downloader_in_tmp.run(n_workers=2, size=size, progress=_null_progress())
-    assert total == 3 * len(TINY_JPEG)
+    _register_jpegs(mocked_http, ('0001', '0002', '0003'), size)
+    report = downloader_in_tmp.run(n_workers=2, size=size, progress=_null_progress())
+    assert report.successful
+    assert report.bytes_written == 3 * len(TINY_JPEG)
 
 
-def test_run_partial_failure_raises_with_summary(mocked_http, downloader_in_tmp: Downloader) -> None:
-    # First image succeeds, second 500s, third succeeds.
-    mocked_http.add(
-        responses.GET,
-        _image_url('0001', 0),
-        body=TINY_JPEG,
-        status=200,
-        content_type='image/jpeg',
-    )
-    mocked_http.add(
-        responses.GET,
-        _image_url('0002', 0),
-        body='boom',
-        status=500,
-        content_type='text/plain',
-    )
-    mocked_http.add(
-        responses.GET,
-        _image_url('0003', 0),
-        body=TINY_JPEG,
-        status=200,
-        content_type='image/jpeg',
-    )
-    with pytest.raises(RuntimeError, match=r'Failed to download 1 image'):
-        downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+def test_run_partial_failure_is_structured_not_silent(mocked_http, downloader_in_tmp: Downloader) -> None:
+    mocked_http.add(responses.GET, _image_url('0001', 0), body=TINY_JPEG, status=200, content_type='image/jpeg')
+    mocked_http.add(responses.GET, _image_url('0002', 0), body='boom', status=500, content_type='text/plain')
+    mocked_http.add(responses.GET, _image_url('0003', 0), body=TINY_JPEG, status=200, content_type='image/jpeg')
+    report = downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+    assert not report.successful
+    assert report.completed == 2
+    assert len(report.failed) == 1
+    assert report.failed[0].label == '0002'
 
 
-def test_run_progress_callbacks_are_invoked(mocked_http, downloader_in_tmp: Downloader) -> None:
-    for label in ('0001', '0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, 0),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
-    set_total_calls: list[int] = []
-    update_count = [0]
+def test_run_progress_callbacks_match_processed_pages(mocked_http, downloader_in_tmp: Downloader) -> None:
+    _register_jpegs(mocked_http, ('0001', '0002', '0003'))
+    totals: list[int] = []
+    ticks = [0]
 
-    def _update() -> None:
-        update_count[0] += 1
+    def update() -> None:
+        ticks[0] += 1
 
-    progress = ProgressBar(set_total=set_total_calls.append, update=_update)
-    downloader_in_tmp.run(n_workers=2, size=0, progress=progress)
-    assert set_total_calls == [3]
-    assert update_count[0] == 3
+    report = downloader_in_tmp.run(n_workers=2, size=0, progress=ProgressBar(totals.append, update))
+    assert report.successful
+    assert totals == [3]
+    assert ticks[0] == 3
 
 
-def test_run_filename_uses_image_extension(mocked_http, tmp_path: Path) -> None:
-    # Construct a downloader with a single canvas served as PNG so we can
-    # observe ``guess_extension`` picking up a different extension.
+def test_run_uses_validated_image_extension(mocked_http, tmp_path: Path) -> None:
     dl = Downloader(GALLERY_URL, first=0, last=1)
     dl.check_dir(parentdir=str(tmp_path), interactive=False)
-    mocked_http.add(
-        responses.GET,
-        _image_url('0001', 0),
-        body=TINY_JPEG,  # bytes are irrelevant, content-type drives extension
-        status=200,
-        content_type='image/png',
-    )
-    dl.run(n_workers=1, size=0, progress=_null_progress())
+    png = b'\x89PNG\r\n\x1a\n' + b'payload'
+    mocked_http.add(responses.GET, _image_url('0001', 0), body=png, status=200, content_type='image/png')
+    report = dl.run(n_workers=1, size=0, progress=_null_progress())
+    assert report.successful
     assert (dl.dirname / '0001.png').is_file()
 
 
 def test_run_with_first_last_range_downloads_subset(mocked_http, tmp_path: Path) -> None:
     dl = Downloader(GALLERY_URL, first=1, last=3)
     dl.check_dir(parentdir=str(tmp_path), interactive=False)
-    for label in ('0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, 0),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
-    dl.run(n_workers=2, size=0, progress=_null_progress())
-    files = sorted(p.name for p in dl.dirname.iterdir())
-    assert files == ['0002.jpg', '0003.jpg']
+    _register_jpegs(mocked_http, ('0002', '0003'))
+    report = dl.run(n_workers=2, size=0, progress=_null_progress())
+    assert report.successful
+    assert _image_files(dl.dirname) == ['0002.jpg', '0003.jpg']
 
 
-def test_run_unknown_content_type_is_reported_as_failure(mocked_http, downloader_in_tmp: Downloader) -> None:
-    # All three respond with a content-type ``guess_extension`` cannot map.
+def test_unknown_content_type_is_reported_as_failure(mocked_http, downloader_in_tmp: Downloader) -> None:
     for label in ('0001', '0002', '0003'):
         mocked_http.add(
             responses.GET,
@@ -155,21 +113,16 @@ def test_run_unknown_content_type_is_reported_as_failure(mocked_http, downloader
             status=200,
             content_type='application/x-no-such-format',
         )
-    with pytest.raises(RuntimeError, match=r'Failed to download 3 image'):
-        downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+    report = downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+    assert len(report.failed) == 3
+    assert report.completed == 0
 
 
-def test_run_cli_uses_tqdm_progress_bar(mocked_http, downloader_in_tmp: Downloader) -> None:
-    for label in ('0001', '0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, 0),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
-    total = antenati_cli.run_cli(downloader_in_tmp, n_workers=2, size=0)
-    assert total == 3 * len(TINY_JPEG)
+def test_run_cli_returns_same_structured_report(mocked_http, downloader_in_tmp: Downloader) -> None:
+    _register_jpegs(mocked_http, ('0001', '0002', '0003'))
+    report = antenati_cli.run_cli(downloader_in_tmp, n_workers=2, size=0)
+    assert report.successful
+    assert report.bytes_written == 3 * len(TINY_JPEG)
 
 
 def test_progress_bar_dataclass_shape() -> None:
@@ -178,39 +131,25 @@ def test_progress_bar_dataclass_shape() -> None:
     assert callable(bar.update)
 
 
-def test_run_honours_preset_cancel_event(mocked_http, downloader_in_tmp: Downloader) -> None:
-    # Register all canvases as 200s; with cancel already set when run()
-    # starts, no fetch should be attempted and the total bytes returned
-    # must be zero. The mock is created with assert_all_requests_are_fired
-    # = False so unused registrations don't fail the test.
-    for label in ('0001', '0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, 0),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
+def test_run_honours_preset_cancel_event_without_image_requests(mocked_http, downloader_in_tmp: Downloader) -> None:
+    _register_jpegs(mocked_http, ('0001', '0002', '0003'))
+    calls_before = len(mocked_http.calls)
     cancel = threading.Event()
     cancel.set()
-    total = downloader_in_tmp.run(n_workers=1, size=0, progress=_null_progress(), cancel=cancel)
-    assert total == 0
+    report = downloader_in_tmp.run(n_workers=1, size=0, progress=_null_progress(), cancel=cancel)
+    assert report.cancelled
+    assert report.attempted == 0
+    assert report.bytes_written == 0
+    assert len(mocked_http.calls) == calls_before
 
 
 def test_run_descriptive_names_embed_ark_and_image_ids(mocked_http, tmp_path: Path) -> None:
     dl = Downloader(GALLERY_URL, first=0, last=None, descriptive_names=True)
     dl.check_dir(parentdir=str(tmp_path), interactive=False)
-    for label in ('0001', '0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, 0),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
-    dl.run(n_workers=2, size=0, progress=_null_progress())
-    files = sorted(p.name for p in dl.dirname.iterdir())
-    assert files == [
+    _register_jpegs(mocked_http, ('0001', '0002', '0003'))
+    report = dl.run(n_workers=2, size=0, progress=_null_progress())
+    assert report.successful
+    assert _image_files(dl.dirname) == [
         '0001+an_ua19944535+img1.jpg',
         '0002+an_ua19944535+img2.jpg',
         '0003+an_ua19944535+img3.jpg',
@@ -220,15 +159,7 @@ def test_run_descriptive_names_embed_ark_and_image_ids(mocked_http, tmp_path: Pa
 def test_run_from_manifest_url_downloads_all_images(mocked_http, tmp_path: Path) -> None:
     dl = Downloader(MANIFEST_URL, first=0, last=None)
     dl.check_dir(parentdir=str(tmp_path), interactive=False)
-    for label in ('0001', '0002', '0003'):
-        mocked_http.add(
-            responses.GET,
-            _image_url(label, 0),
-            body=TINY_JPEG,
-            status=200,
-            content_type='image/jpeg',
-        )
-    total = dl.run(n_workers=2, size=0, progress=_null_progress())
-    assert total == 3 * len(TINY_JPEG)
-    files = sorted(p.name for p in dl.dirname.iterdir())
-    assert files == ['0001.jpg', '0002.jpg', '0003.jpg']
+    _register_jpegs(mocked_http, ('0001', '0002', '0003'))
+    report = dl.run(n_workers=2, size=0, progress=_null_progress())
+    assert report.successful
+    assert _image_files(dl.dirname) == ['0001.jpg', '0002.jpg', '0003.jpg']

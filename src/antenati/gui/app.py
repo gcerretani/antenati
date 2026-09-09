@@ -10,14 +10,24 @@ import tkinter as tk
 import tkinter.filedialog as tkfile
 import tkinter.messagebox as tkmsg
 import tkinter.ttk as ttk
+from pathlib import Path
 from webbrowser import open as webopen
 
 from humanize import naturalsize
 
 from antenati import __contact__, __copyright__, __version__
-from antenati.downloader import DEFAULT_SIZE
+from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE
 from antenati.gui.progress import TkProgress
-from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Progress, Tick
+from antenati.gui.worker import (
+    Cancelled,
+    Done,
+    DownloadParams,
+    DownloadWorker,
+    Failed,
+    Progress,
+    Tick,
+)
+from antenati.output import ExistingPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +35,7 @@ _POLL_INTERVAL_MS = 100
 
 
 class App:
-    """Top-level Tk window. Owns the worker, the progress bar and the layout."""
+    """Top-level Tk window. Owns the worker, progress bar and shared options."""
 
     def __init__(self, root: tk.Tk, title: str) -> None:
         self._root = root
@@ -36,7 +46,10 @@ class App:
         self._size = tk.IntVar(value=DEFAULT_SIZE)
         self._first = tk.IntVar(value=0)
         self._last = tk.StringVar(value='')
+        self._n_workers = tk.IntVar(value=DEFAULT_N_THREADS)
+        self._descriptive = tk.BooleanVar(value=False)
         self._path = tk.StringVar()
+        self._existing = tk.StringVar(value=ExistingPolicy.ASK.value)
 
         self._menu = tk.Menu(self._root)
         self._root.configure(menu=self._menu)
@@ -50,7 +63,10 @@ class App:
 
     def _build_menu(self) -> None:
         menu_file = tk.Menu(self._menu, tearoff=0)
-        menu_file.add_command(label='Portale Antenati Website', command=lambda: webopen('https://antenati.cultura.gov.it/'))
+        menu_file.add_command(
+            label='Portale Antenati Website',
+            command=lambda: webopen('https://antenati.cultura.gov.it/'),
+        )
         menu_file.add_command(label='Project Website', command=lambda: webopen(__contact__))
         menu_file.add_separator()
         menu_file.add_command(label='About', command=self._show_about)
@@ -60,33 +76,152 @@ class App:
         entry_frame = ttk.Frame(self._root)
         entry_frame.pack(side=tk.TOP, fill=tk.X)
 
-        tk.Label(entry_frame, text='Archive or manifest URL').grid(row=0, column=0, padx=10, pady=5, sticky=tk.W)
-        ttk.Entry(entry_frame, textvariable=self._url, width=100).grid(row=0, column=1, padx=10, pady=5, columnspan=3, sticky=tk.EW)
+        tk.Label(entry_frame, text='Archive or manifest URL').grid(
+            row=0,
+            column=0,
+            padx=10,
+            pady=5,
+            sticky=tk.W,
+        )
+        ttk.Entry(entry_frame, textvariable=self._url, width=100).grid(
+            row=0,
+            column=1,
+            padx=10,
+            pady=5,
+            columnspan=3,
+            sticky=tk.EW,
+        )
 
         options = ttk.LabelFrame(entry_frame, text='Options')
         options.grid(row=1, column=0, columnspan=4, padx=10, pady=5, sticky=tk.EW)
 
         tk.Label(options, text='Size (px):').grid(row=0, column=0, sticky=tk.W, padx=6, pady=2)
-        ttk.Spinbox(options, textvariable=self._size, width=10, from_=0, to=5000, increment=100).grid(row=0, column=1, sticky=tk.W, padx=6, pady=2)
-        tk.Label(options, text='Maximum image size in pixels (0 = full size)').grid(row=0, column=2, sticky=tk.W, padx=6, pady=2)
+        ttk.Spinbox(
+            options,
+            textvariable=self._size,
+            width=10,
+            from_=0,
+            to=5000,
+            increment=100,
+        ).grid(row=0, column=1, sticky=tk.W, padx=6, pady=2)
+        tk.Label(options, text='Maximum image size in pixels (0 = full size)').grid(
+            row=0,
+            column=2,
+            sticky=tk.W,
+            padx=6,
+            pady=2,
+        )
 
         tk.Label(options, text='First:').grid(row=1, column=0, sticky=tk.W, padx=6, pady=2)
-        ttk.Spinbox(options, textvariable=self._first, width=10, from_=0, to=100000, increment=1).grid(row=1, column=1, sticky=tk.W, padx=6, pady=2)
-        tk.Label(options, text='Index (0-based) of the first image to download').grid(row=1, column=2, sticky=tk.W, padx=6, pady=2)
+        ttk.Spinbox(
+            options,
+            textvariable=self._first,
+            width=10,
+            from_=0,
+            to=100000,
+            increment=1,
+        ).grid(row=1, column=1, sticky=tk.W, padx=6, pady=2)
+        tk.Label(options, text='Index (0-based) of the first image to download').grid(
+            row=1,
+            column=2,
+            sticky=tk.W,
+            padx=6,
+            pady=2,
+        )
 
         tk.Label(options, text='Last (exclusive):').grid(row=2, column=0, sticky=tk.W, padx=6, pady=2)
-        ttk.Entry(options, textvariable=self._last, width=10).grid(row=2, column=1, sticky=tk.W, padx=6, pady=2)
-        tk.Label(options, text='Index NOT to download; leave empty to download all').grid(row=2, column=2, sticky=tk.W, padx=6, pady=2)
+        ttk.Entry(options, textvariable=self._last, width=10).grid(
+            row=2,
+            column=1,
+            sticky=tk.W,
+            padx=6,
+            pady=2,
+        )
+        tk.Label(options, text='Index NOT to download; leave empty to download all').grid(
+            row=2,
+            column=2,
+            sticky=tk.W,
+            padx=6,
+            pady=2,
+        )
 
-        tk.Label(entry_frame, text='Destination folder').grid(row=2, column=0, padx=10, pady=5, sticky=tk.EW)
-        ttk.Entry(entry_frame, textvariable=self._path, width=100).grid(row=2, column=1, padx=10, pady=5, columnspan=2, sticky=tk.EW)
-        ttk.Button(entry_frame, text='Browse', command=self._browse_path).grid(row=2, column=3, padx=10, pady=5, sticky=tk.EW)
+        tk.Label(options, text='Threads:').grid(row=3, column=0, sticky=tk.W, padx=6, pady=2)
+        ttk.Spinbox(
+            options,
+            textvariable=self._n_workers,
+            width=10,
+            from_=1,
+            to=64,
+            increment=1,
+        ).grid(row=3, column=1, sticky=tk.W, padx=6, pady=2)
+        tk.Label(options, text='Maximum concurrent image workers').grid(
+            row=3,
+            column=2,
+            sticky=tk.W,
+            padx=6,
+            pady=2,
+        )
+
+        tk.Label(options, text='Filenames:').grid(row=4, column=0, sticky=tk.W, padx=6, pady=2)
+        ttk.Checkbutton(
+            options,
+            text='Include archive/image IDs',
+            variable=self._descriptive,
+        ).grid(row=4, column=1, columnspan=2, sticky=tk.W, padx=6, pady=2)
+
+        tk.Label(options, text='Existing files:').grid(row=5, column=0, sticky=tk.W, padx=6, pady=2)
+        ttk.Combobox(
+            options,
+            textvariable=self._existing,
+            values=[policy.value for policy in ExistingPolicy],
+            state='readonly',
+            width=12,
+        ).grid(row=5, column=1, sticky=tk.W, padx=6, pady=2)
+        tk.Label(options, text='ask (default), error, overwrite, skip, or verified resume').grid(
+            row=5,
+            column=2,
+            sticky=tk.W,
+            padx=6,
+            pady=2,
+        )
+
+        tk.Label(entry_frame, text='Output directory').grid(
+            row=2,
+            column=0,
+            padx=10,
+            pady=5,
+            sticky=tk.EW,
+        )
+        ttk.Entry(entry_frame, textvariable=self._path, width=100).grid(
+            row=2,
+            column=1,
+            padx=10,
+            pady=5,
+            columnspan=2,
+            sticky=tk.EW,
+        )
+        ttk.Button(entry_frame, text='Browse', command=self._browse_path).grid(
+            row=2,
+            column=3,
+            padx=10,
+            pady=5,
+            sticky=tk.EW,
+        )
 
         self._download_button = ttk.Button(entry_frame, text='Download', command=self._on_download)
         self._download_button.grid(row=3, column=1, padx=5, pady=5)
-        self._cancel_button = ttk.Button(entry_frame, text='Cancel', command=self._on_cancel, state=tk.DISABLED)
+        self._cancel_button = ttk.Button(
+            entry_frame,
+            text='Cancel',
+            command=self._on_cancel,
+            state=tk.DISABLED,
+        )
         self._cancel_button.grid(row=3, column=2, padx=5, pady=5)
-        ttk.Button(entry_frame, text='Support this project', command=lambda: webopen('https://ko-fi.com/gcerretani')).grid(row=3, column=3, padx=5, pady=5)
+        ttk.Button(
+            entry_frame,
+            text='Support this project',
+            command=lambda: webopen('https://ko-fi.com/gcerretani'),
+        ).grid(row=3, column=3, padx=5, pady=5)
 
     def _build_footer(self) -> None:
         footer_frame = ttk.Frame(self._root)
@@ -108,18 +243,55 @@ class App:
         if selected_path:
             self._path.set(selected_path)
 
+    def _resolve_gui_policy(self, output: str, policy: ExistingPolicy) -> ExistingPolicy | None:
+        """Resolve ``ask`` on the Tk thread; the background worker stays non-interactive."""
+        if policy is not ExistingPolicy.ASK:
+            return policy
+        directory = Path(output)
+        if not directory.exists() or not directory.is_dir() or not any(directory.iterdir()):
+            return ExistingPolicy.ERROR
+
+        resume = tkmsg.askyesnocancel(
+            'Existing output',
+            'The destination already contains files.\n\nYes: resume and verify existing downloads (recommended)\nNo: choose another action\nCancel: stop',
+        )
+        if resume is None:
+            return None
+        if resume:
+            return ExistingPolicy.RESUME
+
+        overwrite = tkmsg.askyesnocancel(
+            'Existing output',
+            'Overwrite planned files?\n\nYes: overwrite\nNo: skip verified files and refuse ambiguous files\nCancel: stop',
+        )
+        if overwrite is None:
+            return None
+        return ExistingPolicy.OVERWRITE if overwrite else ExistingPolicy.SKIP
+
     def _on_download(self) -> None:
         url = self._url.get().strip()
         if not url:
             raise RuntimeError('Please enter a valid URL.')
-        path_value = self._path.get().strip()
-        if not path_value:
-            raise RuntimeError('Please enter a valid destination folder.')
+        output_value = self._path.get().strip()
+        if not output_value:
+            raise RuntimeError('Please choose an output directory.')
+
+        policy = self._resolve_gui_policy(output_value, ExistingPolicy(self._existing.get()))
+        if policy is None:
+            return
 
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
-
-        params = DownloadParams(url=url, parent_dir=path_value, size=self._size.get(), first=int(self._first.get()), last=last_val)
+        params = DownloadParams(
+            url=url,
+            output_dir=output_value,
+            size=self._size.get(),
+            first=int(self._first.get()),
+            last=last_val,
+            n_workers=int(self._n_workers.get()),
+            descriptive_names=bool(self._descriptive.get()),
+            existing_policy=policy,
+        )
 
         self._progress = TkProgress(self._progress_bar)
         self._terminal_received = False
@@ -139,10 +311,6 @@ class App:
                 self._handle_event(event)
         except queue.Empty:
             pass
-        # Do not use worker liveness as the completion signal.  The worker can
-        # enqueue Done/Failed and exit between the empty-queue check and the
-        # liveness check; polling until the terminal event is consumed closes
-        # that race.
         if not self._terminal_received:
             self._root.after(_POLL_INTERVAL_MS, self._drain_events)
 
@@ -156,11 +324,25 @@ class App:
         elif isinstance(event, Done):
             self._terminal_received = True
             self._set_running(False)
-            tkmsg.showinfo('Success', f'Operation completed successfully. Total size: {naturalsize(event.total_bytes, True)}')
+            report = event.report
+            if report.successful:
+                tkmsg.showinfo(
+                    'Success',
+                    f'Completed {report.completed}, skipped {report.skipped}. New data: {naturalsize(report.bytes_written, True)}',
+                )
+            else:
+                details = '\n'.join(f'{f.label}: {f.reason}' for f in report.failed)
+                tkmsg.showwarning(
+                    'Incomplete download',
+                    f'Completed {report.completed}/{report.expected}; failed {len(report.failed)}.\n{details}',
+                )
         elif isinstance(event, Cancelled):
             self._terminal_received = True
             self._set_running(False)
-            tkmsg.showinfo('Cancelled', 'Download cancelled.')
+            tkmsg.showinfo(
+                'Cancelled',
+                f'Download cancelled after {event.report.completed}/{event.report.expected} pages.',
+            )
         elif isinstance(event, Failed):
             self._terminal_received = True
             self._set_running(False)
@@ -176,7 +358,6 @@ class App:
 
 
 def main() -> None:
-    """Launch the Tkinter GUI."""
     tk_root = tk.Tk()
 
     def _callback_exception(_type, ex: BaseException, _traceback):
