@@ -17,7 +17,7 @@ def _null_progress() -> ProgressBar:
 
 def _image_url(size: int = 0) -> str:
     size_part = f'!{size},{size}' if size > 0 else 'pct:100'
-    return f'https://iiif.example.org/iiif/img1/full/{size_part}/0/default.jpg'
+    return f'https://iiif-antenati.cultura.gov.it/iiif/img1/full/{size_part}/0/default.jpg'
 
 
 def _first_run(mocked_http, tmp_path: Path, size: int = 0) -> Downloader:
@@ -80,7 +80,7 @@ def test_resume_preserves_provenance_outside_requested_range(mocked_http, tmp_pa
     for n in (1, 2, 3):
         mocked_http.add(
             responses.GET,
-            f'https://iiif.example.org/iiif/img{n}/full/pct:100/0/default.jpg',
+            f'https://iiif-antenati.cultura.gov.it/iiif/img{n}/full/pct:100/0/default.jpg',
             body=TINY_JPEG,
             status=200,
             content_type='image/jpeg',
