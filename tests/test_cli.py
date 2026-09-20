@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+import re
+
 from typer.testing import CliRunner
 
 from antenati import __version__
 from antenati.cli import app
 
 runner = CliRunner()
+_ANSI_RE = re.compile(r'\\x1b\\[[0-?]*[ -/]*[@-~]')
 
 
 def test_cli_help_uses_modern_workers_name_and_keeps_legacy_alias() -> None:
     result = runner.invoke(app, ['--help'])
     assert result.exit_code == 0
-    assert '--workers' in result.output
-    assert '--nthreads' in result.output
-    assert '-n' in result.output
-    assert '--format' in result.output
+    output = _ANSI_RE.sub('', result.output)
+    assert '--workers' in output
+    assert '--nthreads' in output
+    assert '-n' in output
+    assert '--format' in output
 
 
 def test_cli_version_short_alias_still_works() -> None:
