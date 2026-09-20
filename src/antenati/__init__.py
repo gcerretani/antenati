@@ -32,11 +32,11 @@ from antenati.errors import DownloadFailedError, ThreadError
 __all__ = [
     'DEFAULT_N_THREADS',
     'DEFAULT_SIZE',
+    'Downloader',
+    'DownloadFailedError',
     'DownloadItem',
     'DownloadPlan',
     'DownloadReport',
-    'DownloadFailedError',
-    'Downloader',
     'PageFailure',
     'ProgressBar',
     'ThreadError',
