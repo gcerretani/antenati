@@ -10,7 +10,7 @@ import pytest
 import responses
 
 import antenati
-from antenati import DownloadFailedError, Downloader, ProgressBar
+from antenati import Downloader, DownloadFailedError, ProgressBar
 from antenati import cli as antenati_cli
 from tests.conftest import GALLERY_URL, MANIFEST_URL, TINY_JPEG
 
