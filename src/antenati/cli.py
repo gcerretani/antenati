@@ -13,6 +13,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 import typer
+from requests import RequestException
 from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn
 
 from antenati import __copyright__, __version__
@@ -258,23 +259,26 @@ def cli(
     if output_format is OutputFormat.JSON:
         raise typer.BadParameter('JSON output is scaffolded but not implemented yet in this draft', param_hint='--format')
 
-    wizard_downloader: Downloader | None = None
-    if url is None:
-        config, wizard_downloader = _run_wizard()
-    else:
-        config = DownloadConfig(
-            url=url,
-            output_dir=str(output) if output is not None else None,
-            size=size,
-            first=first,
-            last=last,
-            n_workers=workers,
-            descriptive_names=descriptive_names,
-            existing_policy=existing,
-            dry_run=dry_run,
-        ).validate()
     _configure_logging(verbose, debug)
+    debug_logging = debug or verbose >= 2
+
     try:
+        wizard_downloader: Downloader | None = None
+        if url is None:
+            config, wizard_downloader = _run_wizard()
+        else:
+            config = DownloadConfig(
+                url=url,
+                output_dir=str(output) if output is not None else None,
+                size=size,
+                first=first,
+                last=last,
+                n_workers=workers,
+                descriptive_names=descriptive_names,
+                existing_policy=existing,
+                dry_run=dry_run,
+            ).validate()
+
         downloader = wizard_downloader or Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
         downloader.load()
         if config.output_dir is not None:
@@ -286,8 +290,8 @@ def cli(
             downloader.print_gallery_info()
         policy = _resolve_cli_policy(downloader, config.output_dir, config.existing_policy)
         prepare_output(downloader, config.output_dir, policy)
-        report = run_cli(downloader, config.n_workers, config.size, policy, show_progress=not debug)
-    except (AntenatiError, OSError, RuntimeError, ValueError) as exc:
+        report = run_cli(downloader, config.n_workers, config.size, policy, show_progress=not debug_logging)
+    except (AntenatiError, RequestException, OSError, RuntimeError, ValueError) as exc:
         if debug:
             raise
         typer.echo(f'Error: {exc}', err=True)
