@@ -45,7 +45,11 @@ def _configure_logging(verbosity: int, debug: bool = False) -> None:
         level = logging.DEBUG
     elif verbosity >= 1:
         level = logging.INFO
-    logging.basicConfig(level=level, format='%(levelname)s %(name)s: %(message)s')
+
+    # Keep third-party libraries quiet even in debug mode: our own HTTP layer
+    # already logs requests, redirects and responses with the useful context.
+    logging.basicConfig(level=logging.WARNING, format='%(levelname)s %(name)s: %(message)s')
+    logging.getLogger('antenati').setLevel(level)
 
 
 def _version_callback(value: bool) -> None:
@@ -54,23 +58,44 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-def run_cli(downloader: Downloader, n_workers: int, size: int, policy: ExistingPolicy = ExistingPolicy.OVERWRITE) -> DownloadReport:
-    with Progress(
+def run_cli(
+    downloader: Downloader,
+    n_workers: int,
+    size: int,
+    policy: ExistingPolicy = ExistingPolicy.OVERWRITE,
+    *,
+    show_progress: bool = True,
+) -> DownloadReport:
+    if not show_progress:
+        progress_bar = ProgressBar(set_total=lambda _total: None, update=lambda: None)
+        return run_with_policy(downloader, n_workers=n_workers, size=size, progress=progress_bar, policy=policy)
+
+    progress = Progress(
         TextColumn('[progress.description]{task.description}'),
         BarColumn(),
         TaskProgressColumn(),
         TextColumn('{task.completed:.0f}/{task.total:.0f}'),
-    ) as progress:
-        task_id = progress.add_task('Downloading', total=0)
+    )
+    task_id = None
 
-        def set_total(total: int) -> None:
+    def set_total(total: int) -> None:
+        nonlocal task_id
+        if task_id is None:
+            progress.start()
+            task_id = progress.add_task('Downloading', total=total)
+        else:
             progress.update(task_id, total=total)
 
-        def advance() -> None:
+    def advance() -> None:
+        if task_id is not None:
             progress.advance(task_id)
 
-        progress_bar = ProgressBar(set_total=set_total, update=advance)
+    progress_bar = ProgressBar(set_total=set_total, update=advance)
+    try:
         return run_with_policy(downloader, n_workers=n_workers, size=size, progress=progress_bar, policy=policy)
+    finally:
+        if task_id is not None:
+            progress.stop()
 
 
 def _planned_filename(item: DownloadItem) -> str:
@@ -260,7 +285,7 @@ def cli(
             downloader.print_gallery_info()
         policy = _resolve_cli_policy(downloader, config.output_dir, config.existing_policy)
         prepare_output(downloader, config.output_dir, policy)
-        report = run_cli(downloader, config.n_workers, config.size, policy)
+        report = run_cli(downloader, config.n_workers, config.size, policy, show_progress=not debug)
     except (AntenatiError, OSError, RuntimeError, ValueError) as exc:
         if debug:
             raise
