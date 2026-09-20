@@ -42,7 +42,6 @@ def test_legacy_flags_are_accepted_by_typer_parser() -> None:
     result = runner.invoke(
         app,
         [
-            'https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/test',
             '-s',
             '2000',
             '-n',
@@ -65,7 +64,8 @@ def test_legacy_flags_are_accepted_by_typer_parser() -> None:
     )
     assert result.exit_code != 0
     assert 'No such option' not in result.output
-    assert 'JSON output is scaffolded' in result.output
+    output = _ANSI_RE.sub('', result.output)
+    assert 'URL is required with --format json' in output
 
 
 def test_no_url_fails_without_prompt_outside_tty(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -205,3 +205,10 @@ def test_run_cli_starts_progress_only_after_total_is_known(monkeypatch: pytest.M
 
     assert result is sentinel
     assert events == ['init', 'start', ('add', 15), 'advance', 'stop']
+
+
+def test_json_mode_requires_explicit_url() -> None:
+    result = runner.invoke(app, ['--format', 'json'])
+    assert result.exit_code != 0
+    output = _ANSI_RE.sub('', result.output)
+    assert 'URL is required with --format json' in output

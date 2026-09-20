@@ -116,6 +116,7 @@ By default the output directory is derived from the register metadata. Use `--ou
 | `-o`, `--output PATH` | Exact output directory. |
 | `--existing {ask,error,overwrite,skip,resume}` | Policy when the output already exists. Default: `ask`. |
 | `--dry-run` | Resolve the source and print the planned pages/filenames without downloading image bodies or creating the output directory. |
+| `--format {text,json}` | Human-readable Rich output (default) or stable machine-readable JSON. |
 | `--verbose` | Increase logging verbosity; repeat for DEBUG. |
 | `--debug` | Enable diagnostic logging and full tracebacks; animated terminal progress is disabled for readable logs. |
 | `-v`, `--version` | Print the version and exit. |
@@ -130,7 +131,19 @@ Run `antenati -h` for the authoritative option list.
 - `resume` — verify indexed existing files and redownload only missing, stale, mismatched or corrupt pages.
 - `skip` — reuse only files that can be verified from the provenance index; ambiguous unverified files are never silently accepted.
 
-For scripts and unattended runs, select an explicit non-interactive policy instead of `ask`, for example `--existing resume` or `--existing error`.
+For scripts and unattended runs, select an explicit non-interactive policy instead of `ask`, for example `--existing resume` or `--existing error`. This is required in `--format json` mode whenever the destination is already non-empty, because JSON mode never opens an interactive prompt.
+
+### Machine-readable JSON
+
+Use `--format json` when another program needs a stable structured result:
+
+```text
+antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x --existing resume --format json
+```
+
+JSON mode writes **only JSON to stdout**: no Rich panels, spinner or progress bar. Logging and operational diagnostics remain on stderr. The payload is versioned with `schema_version` and includes the resolved source/manifest, cleaned register metadata, output directory, effective options and the final `DownloadReport` fields (`expected`, `attempted`, `completed`, `skipped`, failures, cancellation state, remaining work and exact bytes written).
+
+`--dry-run --format json` returns the resolved plan instead, including each planned filename, canvas ID and IIIF source URL, without creating the output directory or downloading image bodies.
 
 The same source canvas receives the same planned filename regardless of the selected subset, worker count or completion order. For example, a 150-page gallery uses names such as `pag-001.jpg`; downloading only pages 7–12 still produces the corresponding zero-padded names from the complete gallery.
 

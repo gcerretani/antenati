@@ -10,17 +10,16 @@ import sys
 from enum import Enum
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import urlsplit
 
 import typer
 from requests import RequestException
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 
-from antenati import __copyright__, __version__, cli_ui
+from antenati import __copyright__, __version__, cli_json, cli_ui
 from antenati.config import DownloadConfig
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, DownloadItem, DownloadReport, ProgressBar
 from antenati.errors import AntenatiError
-from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
+from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, planned_path, prepare_output, run_with_policy
 
 
 class OutputFormat(str, Enum):
@@ -101,12 +100,7 @@ def run_cli(
 
 
 def _planned_filename(item: DownloadItem) -> str:
-    suffix = Path(urlsplit(item.source_url).path).suffix.lower()
-    if suffix in {'.jpeg', '.jpe'}:
-        suffix = '.jpg'
-    if suffix not in {'.jpg', '.png', '.tif', '.tiff', '.webp'}:
-        suffix = '.img'
-    return f'{item.stem}{suffix}'
+    return planned_path(Path('.'), item).name
 
 
 def print_preview(downloader: Downloader, size: int, *, detailed: bool = False) -> None:
@@ -115,12 +109,21 @@ def print_preview(downloader: Downloader, size: int, *, detailed: bool = False) 
     cli_ui.render_preview(plan, downloader.dirname, filenames, detailed=detailed)
 
 
-def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, policy: ExistingPolicy) -> ExistingPolicy:
+def _resolve_cli_policy(
+    downloader: Downloader,
+    output: str | Path | None,
+    policy: ExistingPolicy,
+    *,
+    allow_prompt: bool = True,
+) -> ExistingPolicy:
     """Resolve the interactive ask policy before entering the downloader core."""
     if policy is not ExistingPolicy.ASK or not existing_output_requires_decision(downloader, output):
         return ExistingPolicy.ERROR if policy is ExistingPolicy.ASK else policy
 
     directory = output_directory(downloader, output)
+    if not allow_prompt:
+        raise RuntimeError(f'Output directory already exists and is not empty: {directory}. Choose an explicit --existing policy when using --format json.')
+
     cli_ui.render_existing_output(directory)
     choices = {item.value for item in (ExistingPolicy.RESUME, ExistingPolicy.OVERWRITE, ExistingPolicy.SKIP)}
     while True:
@@ -220,14 +223,15 @@ def cli(
     output: Annotated[Path | None, typer.Option('-o', '--output', help='Exact output directory (default: generated archive directory)')] = None,
     existing: Annotated[ExistingPolicy, typer.Option('--existing', help='How to handle an existing output directory')] = ExistingPolicy.ASK,
     dry_run: Annotated[bool, typer.Option('--dry-run', help='Show the resolved download plan without writing image files')] = False,
-    output_format: Annotated[OutputFormat, typer.Option('--format', help='Output format; JSON rendering will land later in #79')] = OutputFormat.TEXT,
+    output_format: Annotated[OutputFormat, typer.Option('--format', help='Output format: text or machine-readable JSON')] = OutputFormat.TEXT,
     version: Annotated[bool | None, typer.Option('-v', '--version', callback=_version_callback, is_eager=True, help='Show version and exit')] = None,
     verbose: Annotated[int, typer.Option('--verbose', count=True, help='Increase logging verbosity; repeat for DEBUG')] = 0,
     debug: Annotated[bool, typer.Option('--debug', help='Enable debug logging and tracebacks')] = False,
 ) -> None:
     """Download a gallery/register from Portale Antenati."""
-    if output_format is OutputFormat.JSON:
-        raise typer.BadParameter('JSON output is scaffolded but not implemented yet in this draft', param_hint='--format')
+    json_mode = output_format is OutputFormat.JSON
+    if json_mode and url is None:
+        raise typer.BadParameter('URL is required with --format json.', param_hint='URL')
 
     _configure_logging(verbose, debug)
     debug_logging = debug or verbose >= 2
@@ -251,21 +255,37 @@ def cli(
 
         downloader = wizard_downloader or Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
         if wizard_downloader is None:
-            with cli_ui.loading('Loading register metadata…', enabled=not debug_logging):
+            with cli_ui.loading('Loading register metadata…', enabled=not debug_logging and not json_mode):
                 downloader.load()
-            cli_ui.render_register(downloader.manifest, downloader.gallery_length)
+            if not json_mode:
+                cli_ui.render_register(downloader.manifest, downloader.gallery_length)
 
         if config.output_dir is not None:
             downloader.dirname = Path(config.output_dir)
 
         if config.dry_run:
-            print_preview(downloader, config.size, detailed=verbose > 0 or debug)
+            if json_mode:
+                cli_json.emit(cli_json.plan_payload(downloader, config))
+            else:
+                print_preview(downloader, config.size, detailed=verbose > 0 or debug)
             return
 
-        policy = _resolve_cli_policy(downloader, config.output_dir, config.existing_policy)
+        policy = _resolve_cli_policy(
+            downloader,
+            config.output_dir,
+            config.existing_policy,
+            allow_prompt=not json_mode,
+        )
         prepare_output(downloader, config.output_dir, policy)
-        cli_ui.render_run_summary(downloader.dirname, size=config.size, workers=config.n_workers, policy=policy)
-        report = run_cli(downloader, config.n_workers, config.size, policy, show_progress=not debug_logging)
+        if not json_mode:
+            cli_ui.render_run_summary(downloader.dirname, size=config.size, workers=config.n_workers, policy=policy)
+        report = run_cli(
+            downloader,
+            config.n_workers,
+            config.size,
+            policy,
+            show_progress=not debug_logging and not json_mode,
+        )
     except KeyboardInterrupt:
         cli_ui.render_error('Cancelled by user.')
         raise typer.Exit(code=130) from None
@@ -275,7 +295,10 @@ def cli(
         cli_ui.render_error(str(exc))
         raise typer.Exit(code=1) from None
 
-    cli_ui.render_report(report, downloader.dirname)
+    if json_mode:
+        cli_json.emit(cli_json.report_payload(downloader, config, policy, report))
+    else:
+        cli_ui.render_report(report, downloader.dirname)
     if report.cancelled or report.failed or not report.successful:
         raise typer.Exit(code=1)
 
