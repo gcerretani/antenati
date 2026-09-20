@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resource ceilings for metadata, image size, canvas count, total bytes and bounded in-flight work (#50)
 - Explicit Antenati HTTPS trust chain: public portal input validation plus public-network validation for discovered manifest/image backends and every redirect, without hardcoding current internal CDN hostnames (#48)
 - Optional `strict=True` programmatic download mode that raises `DownloadFailedError` while retaining the structured report on the exception (#75)
+- Modern Typer/Rich command-line interface with interactive and machine-readable output planned under #79 (migration started)
 
 ### Changed
 - **Breaking:** `Downloader.run()` no longer raises automatically for partial page failures; it returns `DownloadReport` and callers must inspect `report.successful`/`report.failed`, or opt in to `strict=True` for exception-based handling (#60, #75)
