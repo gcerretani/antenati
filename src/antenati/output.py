@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from enum import Enum
 from pathlib import Path
@@ -11,6 +12,8 @@ from urllib.parse import urlsplit
 
 from antenati import provenance
 from antenati.downloader import Downloader, DownloadItem, DownloadReport, ProgressBar
+
+logger = logging.getLogger(__name__)
 
 
 class ExistingPolicy(str, Enum):
@@ -56,6 +59,7 @@ def prepare_output(downloader: Downloader, output: str | Path | None, policy: Ex
         raise RuntimeError('ExistingPolicy.ASK must be resolved by the interface before execution')
 
     directory = output_directory(downloader, output)
+    logger.debug('Preparing output directory %s with policy=%s', directory, policy.value)
     downloader.dirname = directory
     if directory.exists():
         if not directory.is_dir():
@@ -76,6 +80,7 @@ def _validate_skip_policy(downloader: Downloader, size: int) -> None:
         requested_size=size,
     )
     verified_keys = set(verified)
+    logger.debug('Skip policy found %d verified existing records in %s', len(verified_keys), downloader.dirname)
     for item in plan.items:
         candidate = planned_path(downloader.dirname, item)
         key = (str(item.canvas.get('@id', '')), item.source_url)
@@ -106,6 +111,13 @@ def run_with_policy(
         raise RuntimeError('ExistingPolicy.ASK must be resolved by the interface before execution')
     if policy is ExistingPolicy.SKIP:
         _validate_skip_policy(downloader, size)
+    logger.debug(
+        'Starting download with policy=%s workers=%d size=%d resume=%s',
+        policy.value,
+        n_workers,
+        size,
+        policy in {ExistingPolicy.RESUME, ExistingPolicy.SKIP},
+    )
     return downloader.run(
         n_workers=n_workers,
         size=size,
