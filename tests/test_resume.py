@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import responses
 
 from antenati import Downloader, ProgressBar
@@ -101,3 +102,62 @@ def test_resume_preserves_provenance_outside_requested_range(mocked_http, tmp_pa
     index = json.loads((full.dirname / INDEX_FILENAME).read_text(encoding='utf-8'))
     filenames = {record['filename'] for record in index['images']}
     assert filenames == {'0001.jpg', '0002.jpg', '0003.jpg'}
+
+
+def test_resume_renames_verified_file_when_descriptive_names_changes(mocked_http, tmp_path: Path) -> None:
+    first = _first_run(mocked_http, tmp_path)
+    old_path = first.dirname / '0001.jpg'
+
+    resumed = Downloader(GALLERY_URL, first=0, last=1, descriptive_names=True)
+    resumed.load()
+    resumed.dirname = first.dirname
+    before_calls = len(mocked_http.calls)
+
+    report = resumed.run(n_workers=1, size=0, progress=_null_progress(), resume=True)
+
+    new_path = first.dirname / '0001+an_ua19944535+img1.jpg'
+    assert report.successful
+    assert report.skipped == 1
+    assert len(mocked_http.calls) == before_calls
+    assert not old_path.exists()
+    assert new_path.read_bytes() == TINY_JPEG
+    index = json.loads((first.dirname / INDEX_FILENAME).read_text(encoding='utf-8'))
+    assert index['images'][0]['filename'] == new_path.name
+
+
+def test_resume_renames_verified_file_back_to_default_names(mocked_http, tmp_path: Path) -> None:
+    first = Downloader(GALLERY_URL, first=0, last=1, descriptive_names=True)
+    first.check_dir(parentdir=str(tmp_path), interactive=False)
+    mocked_http.add(responses.GET, _image_url(), body=TINY_JPEG, status=200, content_type='image/jpeg')
+    assert first.run(n_workers=1, size=0, progress=_null_progress()).successful
+    old_path = first.dirname / '0001+an_ua19944535+img1.jpg'
+
+    resumed = Downloader(GALLERY_URL, first=0, last=1)
+    resumed.load()
+    resumed.dirname = first.dirname
+    before_calls = len(mocked_http.calls)
+
+    report = resumed.run(n_workers=1, size=0, progress=_null_progress(), resume=True)
+
+    new_path = first.dirname / '0001.jpg'
+    assert report.successful
+    assert report.skipped == 1
+    assert len(mocked_http.calls) == before_calls
+    assert not old_path.exists()
+    assert new_path.read_bytes() == TINY_JPEG
+
+
+def test_resume_refuses_filename_reconciliation_collision(mocked_http, tmp_path: Path) -> None:
+    first = _first_run(mocked_http, tmp_path)
+    target = first.dirname / '0001+an_ua19944535+img1.jpg'
+    target.write_bytes(b'unrelated')
+
+    resumed = Downloader(GALLERY_URL, first=0, last=1, descriptive_names=True)
+    resumed.load()
+    resumed.dirname = first.dirname
+
+    with pytest.raises(RuntimeError, match='target already exists'):
+        resumed.run(n_workers=1, size=0, progress=_null_progress(), resume=True)
+
+    assert (first.dirname / '0001.jpg').read_bytes() == TINY_JPEG
+    assert target.read_bytes() == b'unrelated'

@@ -10,7 +10,7 @@ import pytest
 import responses
 
 import antenati
-from antenati import Downloader, ProgressBar
+from antenati import Downloader, DownloadFailedError, ProgressBar
 from antenati import cli as antenati_cli
 from tests.conftest import GALLERY_URL, MANIFEST_URL, TINY_JPEG
 
@@ -65,6 +65,21 @@ def test_run_partial_failure_is_structured_not_silent(mocked_http, downloader_in
     mocked_http.add(responses.GET, _image_url('0002', 0), body='boom', status=500, content_type='text/plain')
     mocked_http.add(responses.GET, _image_url('0003', 0), body=TINY_JPEG, status=200, content_type='image/jpeg')
     report = downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress())
+    assert not report.successful
+    assert report.completed == 2
+    assert len(report.failed) == 1
+    assert report.failed[0].label == '0002'
+
+
+def test_run_strict_raises_with_unsuccessful_report(mocked_http, downloader_in_tmp: Downloader) -> None:
+    mocked_http.add(responses.GET, _image_url('0001', 0), body=TINY_JPEG, status=200, content_type='image/jpeg')
+    mocked_http.add(responses.GET, _image_url('0002', 0), body='boom', status=500, content_type='text/plain')
+    mocked_http.add(responses.GET, _image_url('0003', 0), body=TINY_JPEG, status=200, content_type='image/jpeg')
+
+    with pytest.raises(DownloadFailedError) as exc_info:
+        downloader_in_tmp.run(n_workers=2, size=0, progress=_null_progress(), strict=True)
+
+    report = exc_info.value.report
     assert not report.successful
     assert report.completed == 2
     assert len(report.failed) == 1

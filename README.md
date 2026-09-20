@@ -140,6 +140,28 @@ An image is counted as completed only after its response is streamed to a tempor
 
 These checks improve local integrity; they do not cryptographically authenticate data supplied by the remote archive itself.
 
+### Programmatic failure handling
+
+In v7, `Downloader.run()` returns a structured `DownloadReport` even when individual pages fail. Programmatic callers should inspect `report.successful` (and `report.failed`) instead of relying on a partial-download exception:
+
+```python
+report = downloader.run(n_workers=2, size=0, progress=progress)
+if not report.successful:
+    for failure in report.failed:
+        print(f'{failure.label}: {failure.reason}')
+```
+
+Callers that prefer exception-based fail-fast handling can opt in with `strict=True`. An unsuccessful report then raises `DownloadFailedError`, and the complete report remains available as `exc.report`:
+
+```python
+from antenati import DownloadFailedError
+
+try:
+    downloader.run(n_workers=2, size=0, progress=progress, strict=True)
+except DownloadFailedError as exc:
+    print(exc.report.failed)
+```
+
 ## CLI / GUI capability parity
 
 | Capability | CLI | GUI |

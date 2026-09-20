@@ -15,8 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI `--dry-run` preview of the exact planned pages, filenames and image URLs without image writes (#63)
 - Shared CLI/GUI configuration model, including worker-count and descriptive-filename controls in the GUI (#64)
 - Resource ceilings for metadata, image size, canvas count, total bytes and bounded in-flight work (#50)
+- Optional `strict=True` programmatic download mode that raises `DownloadFailedError` while retaining the structured report on the exception (#75)
 
 ### Changed
+- **Breaking:** `Downloader.run()` no longer raises automatically for partial page failures; it returns `DownloadReport` and callers must inspect `report.successful`/`report.failed`, or opt in to `strict=True` for exception-based handling (#60, #75)
 - Split downloader construction, source loading, planning and execution into explicit phases; constructing a `Downloader` no longer performs network I/O (#67)
 - Numeric page labels are zero-padded from the complete gallery size so lexicographic filename order matches page order and remains stable across subsets (#73)
 - Image bodies are streamed instead of buffered in memory, and queued work is bounded relative to worker count (#50)
@@ -28,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Missing or invalid response metadata and malformed selections now fail with controlled domain errors instead of late technical exceptions (#52)
 - Existing files are never silently treated as valid by resume/skip semantics without matching provenance and integrity checks (#59, #62)
 - Restored interactive handling of non-empty output directories through the explicit `ask` policy instead of failing by default (#62)
+- Verified resume/skip now reconciles an already-verified file to the filename produced by the current naming mode, without silently overwriting an unrelated target (#76)
 
 ### Testing
 - Expanded offline regression coverage for cancellation side effects, filename collisions and padding, atomic/integrity guarantees, report/file consistency, provenance, verified resume, output policies, resource limits and shared configuration (#66)

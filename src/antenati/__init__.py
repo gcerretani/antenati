@@ -27,11 +27,12 @@ from antenati.downloader import (
     PageFailure,
     ProgressBar,
 )
-from antenati.errors import ThreadError
+from antenati.errors import DownloadFailedError, ThreadError
 
 __all__ = [
     'DEFAULT_N_THREADS',
     'DEFAULT_SIZE',
+    'DownloadFailedError',
     'DownloadItem',
     'DownloadPlan',
     'DownloadReport',
