@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Numeric page labels are zero-padded from the complete gallery size so lexicographic filename order matches page order and remains stable across subsets (#73)
 - Image bodies are streamed instead of buffered in memory, and queued work is bounded relative to worker count (#50)
 - CLI, GUI and programmatic execution now share preflight validation for page ranges, image size and worker count (#52)
+- CLI parsing/presentation migrated from argparse, direct Click, `tqdm` and `humanize` to Typer + Rich; `--workers` is the canonical worker option while `-n` and legacy `--nthreads` remain accepted for v6 script compatibility (#79)
 - README now documents standalone GitHub Release executables as the recommended path for non-Python users, alongside PyPI and source/development installation, and describes the actual single-gallery/register scope and integrity guarantees (#68)
 - GUI progress now distinguishes manifest/planning phases with an indeterminate animation before switching to determinate per-page progress (#79)
 - The GUI destination model now separates a fixed absolute base directory from the metadata-derived register folder: automatic per-register subfolders never replace the base path, preventing confusing apparent nesting between consecutive downloads; direct-to-folder mode and Open folder remain available (#79)
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 - Expanded offline regression coverage for cancellation side effects, filename collisions and padding, atomic/integrity guarantees, report/file consistency, provenance, verified resume, output policies, resource limits and shared configuration (#66)
+- Added offline CLI/GUI acceptance coverage for the TTY wizard, JSON-only stdout, dry-run plans, concise/debug error modes, Windows atomic-replace retries, GUI loading phases, destination handling and width-stable status rendering across Linux, macOS and Windows (#79)
 
 ## [6.2] - 2026-09-06
 
