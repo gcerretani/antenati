@@ -6,11 +6,12 @@
 from __future__ import annotations
 
 import logging
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from enum import Enum
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlsplit
 
-import click
+import typer
 from humanize import naturalsize
 from tqdm import tqdm
 
@@ -20,16 +21,40 @@ from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, Dow
 from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
 
 
-def _configure_logging(verbosity: int) -> None:
+class OutputFormat(str, Enum):
+    """CLI output formats."""
+
+    TEXT = 'text'
+    JSON = 'json'
+
+
+app = typer.Typer(
+    add_completion=False,
+    help='Download data from the Portale Antenati.',
+    epilog=__copyright__,
+    no_args_is_help=False,
+    rich_markup_mode='rich',
+)
+
+
+def _configure_logging(verbosity: int, debug: bool = False) -> None:
     level = logging.WARNING
-    if verbosity >= 2:
+    if debug or verbosity >= 2:
         level = logging.DEBUG
     elif verbosity >= 1:
         level = logging.INFO
     logging.basicConfig(level=level, format='%(levelname)s %(name)s: %(message)s')
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
 def run_cli(downloader: Downloader, n_workers: int, size: int, policy: ExistingPolicy = ExistingPolicy.OVERWRITE) -> DownloadReport:
+    # Rich progress will replace tqdm later in #79. Keep execution behavior
+    # unchanged while the argument parser is migrated first.
     with tqdm(unit='img') as progress:
         progress_bar = ProgressBar(progress.reset, progress.update)  # type: ignore[arg-type]
         return run_with_policy(downloader, n_workers=n_workers, size=size, progress=progress_bar, policy=policy)
@@ -54,25 +79,25 @@ def print_preview(downloader: Downloader, size: int) -> None:
 
 
 def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, policy: ExistingPolicy) -> ExistingPolicy:
-    """Resolve ``ask`` to a concrete policy before entering the downloader core."""
+    """Resolve the interactive ask policy before entering the downloader core."""
     if policy is not ExistingPolicy.ASK or not existing_output_requires_decision(downloader, output):
         return ExistingPolicy.ERROR if policy is ExistingPolicy.ASK else policy
 
     directory = output_directory(downloader, output)
-    click.echo(f'Output directory already exists and is not empty: {directory}')
-    click.echo('Choose how to handle existing files:')
-    click.echo('  resume    verify and reuse valid downloads (recommended)')
-    click.echo('  overwrite download again and replace planned files')
-    click.echo('  skip      reuse verified files; refuse ambiguous existing files')
-    click.echo('  cancel    stop without changing the directory')
-    selected = click.prompt(
+    typer.echo(f'Output directory already exists and is not empty: {directory}')
+    typer.echo('Choose how to handle existing files:')
+    typer.echo('  resume    verify and reuse valid downloads (recommended)')
+    typer.echo('  overwrite download again and replace planned files')
+    typer.echo('  skip      reuse verified files; refuse ambiguous existing files')
+    typer.echo('  cancel    stop without changing the directory')
+    selected = typer.prompt(
         'Policy',
-        type=click.Choice(['resume', 'overwrite', 'skip', 'cancel'], case_sensitive=False),
+        type=typer.Choice(['resume', 'overwrite', 'skip', 'cancel'], case_sensitive=False),
         default='resume',
         show_choices=False,
     ).lower()
     if selected == 'cancel':
-        raise SystemExit(1)
+        raise typer.Exit(code=1)
     return ExistingPolicy(selected)
 
 
@@ -85,42 +110,38 @@ def _print_report(report: DownloadReport) -> None:
         print(f' - {failure.label}: {failure.reason}')
 
 
-def main() -> None:
-    parser = ArgumentParser(
-        description='Download data from the Portale Antenati',
-        epilog=__copyright__,
-        formatter_class=ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument('url', metavar='URL', type=str, help='url of the gallery page or of its IIIF manifest')
-    parser.add_argument('-s', '--size', type=int, default=DEFAULT_SIZE, help='image size in pixel (0 means full size)')
-    parser.add_argument('-n', '--nthreads', type=int, default=DEFAULT_N_THREADS, help='max n. of threads')
-    parser.add_argument('-f', '--first', type=int, default=0, help='first image to download')
-    parser.add_argument('-l', '--last', type=int, default=None, help='first image NOT to download')
-    parser.add_argument('-d', '--descriptive-names', action='store_true', help='include the archive and image IDs in saved file names')
-    parser.add_argument('-o', '--output', type=Path, default=None, help='exact output directory (default: generated archive directory)')
-    parser.add_argument(
-        '--existing',
-        choices=[policy.value for policy in ExistingPolicy],
-        default=ExistingPolicy.ASK.value,
-        help='existing-file policy: ask, error, overwrite, skip verified files without replacing unverified ones, or verified resume',
-    )
-    parser.add_argument('--dry-run', action='store_true', help='show the resolved download plan without downloading image bodies or writing files')
-    parser.add_argument('-v', '--version', action='version', version=__version__)
-    parser.add_argument('--verbose', action='count', default=0, help='increase logging verbosity (--verbose for INFO, twice for DEBUG)')
-    args = parser.parse_args()
+@app.command()
+def cli(
+    url: Annotated[str, typer.Argument(help='URL of the gallery page or its IIIF manifest')],
+    size: Annotated[int, typer.Option('-s', '--size', help='Image size in pixels; 0 means full size')] = DEFAULT_SIZE,
+    workers: Annotated[int, typer.Option('-n', '--workers', '--nthreads', help='Maximum number of concurrent download workers')] = DEFAULT_N_THREADS,
+    first: Annotated[int, typer.Option('-f', '--first', help='First image to download')] = 0,
+    last: Annotated[int | None, typer.Option('-l', '--last', help='First image NOT to download')] = None,
+    descriptive_names: Annotated[bool, typer.Option('-d', '--descriptive-names', help='Include archive and image IDs in saved file names')] = False,
+    output: Annotated[Path | None, typer.Option('-o', '--output', help='Exact output directory (default: generated archive directory)')] = None,
+    existing: Annotated[ExistingPolicy, typer.Option('--existing', help='How to handle an existing output directory')] = ExistingPolicy.ASK,
+    dry_run: Annotated[bool, typer.Option('--dry-run', help='Show the resolved download plan without writing image files')] = False,
+    output_format: Annotated[OutputFormat, typer.Option('--format', help='Output format; JSON rendering will land later in #79')] = OutputFormat.TEXT,
+    version: Annotated[bool | None, typer.Option('-v', '--version', callback=_version_callback, is_eager=True, help='Show version and exit')] = None,
+    verbose: Annotated[int, typer.Option('--verbose', count=True, help='Increase logging verbosity; repeat for DEBUG')] = 0,
+    debug: Annotated[bool, typer.Option('--debug', help='Enable debug logging')] = False,
+) -> None:
+    """Download a gallery/register from Portale Antenati."""
+    if output_format is OutputFormat.JSON:
+        raise typer.BadParameter('JSON output is scaffolded but not implemented yet in this draft', param_hint='--format')
 
     config = DownloadConfig(
-        url=args.url,
-        output_dir=str(args.output) if args.output is not None else None,
-        size=args.size,
-        first=args.first,
-        last=args.last,
-        n_workers=args.nthreads,
-        descriptive_names=args.descriptive_names,
-        existing_policy=ExistingPolicy(args.existing),
-        dry_run=args.dry_run,
+        url=url,
+        output_dir=str(output) if output is not None else None,
+        size=size,
+        first=first,
+        last=last,
+        n_workers=workers,
+        descriptive_names=descriptive_names,
+        existing_policy=existing,
+        dry_run=dry_run,
     ).validate()
-    _configure_logging(args.verbose)
+    _configure_logging(verbose, debug)
     downloader = Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
     downloader.load()
     if config.output_dir is not None:
@@ -134,7 +155,11 @@ def main() -> None:
     report = run_cli(downloader, config.n_workers, config.size, policy)
     _print_report(report)
     if report.cancelled or report.failed or not report.successful:
-        raise SystemExit(1)
+        raise typer.Exit(code=1)
+
+
+def main() -> None:
+    app(prog_name='antenati')
 
 
 if __name__ == '__main__':
