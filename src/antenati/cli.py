@@ -12,8 +12,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 import typer
-from humanize import naturalsize
-from tqdm import tqdm
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 
 from antenati import __copyright__, __version__
 from antenati.config import DownloadConfig
@@ -53,10 +52,21 @@ def _version_callback(value: bool) -> None:
 
 
 def run_cli(downloader: Downloader, n_workers: int, size: int, policy: ExistingPolicy = ExistingPolicy.OVERWRITE) -> DownloadReport:
-    # Rich progress will replace tqdm later in #79. Keep execution behavior
-    # unchanged while the argument parser is migrated first.
-    with tqdm(unit='img') as progress:
-        progress_bar = ProgressBar(progress.reset, progress.update)  # type: ignore[arg-type]
+    with Progress(
+        TextColumn('[progress.description]{task.description}'),
+        BarColumn(),
+        TaskProgressColumn(),
+        TextColumn('{task.completed:.0f}/{task.total:.0f}'),
+    ) as progress:
+        task_id = progress.add_task('Downloading', total=0)
+
+        def set_total(total: int) -> None:
+            progress.update(task_id, total=total)
+
+        def advance() -> None:
+            progress.advance(task_id)
+
+        progress_bar = ProgressBar(set_total=set_total, update=advance)
         return run_with_policy(downloader, n_workers=n_workers, size=size, progress=progress_bar, policy=policy)
 
 
@@ -101,10 +111,20 @@ def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, polic
     return ExistingPolicy(selected)
 
 
+def _format_bytes(value: int) -> str:
+    amount = float(value)
+    units = ('B', 'KiB', 'MiB', 'GiB', 'TiB')
+    for unit in units:
+        if amount < 1024 or unit == units[-1]:
+            return f'{amount:.0f} {unit}' if unit == 'B' else f'{amount:.1f} {unit}'
+        amount /= 1024
+    raise AssertionError('unreachable')
+
+
 def _print_report(report: DownloadReport) -> None:
     print(
         f'Completed: {report.completed}/{report.expected}; skipped: {report.skipped}; '
-        f'failed: {len(report.failed)}; bytes written: {naturalsize(report.bytes_written, True)}'
+        f'failed: {len(report.failed)}; bytes written: {_format_bytes(report.bytes_written)}'
     )
     for failure in report.failed:
         print(f' - {failure.label}: {failure.reason}')
