@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
+import subprocess
+import sys
 import tkinter as tk
 import tkinter.filedialog as tkfile
 import tkinter.font as tkfont
@@ -42,7 +45,7 @@ class App:
 
     def __init__(self, root: tk.Tk, title: str) -> None:
         self._root = root
-        self._root.minsize(760, 420)
+        self._root.minsize(760, 450)
         self._root.title(title.strip())
 
         base_font = tkfont.nametofont('TkDefaultFont')
@@ -57,7 +60,10 @@ class App:
         self._last = tk.StringVar(value='')
         self._n_workers = tk.IntVar(value=DEFAULT_N_THREADS)
         self._descriptive = tk.BooleanVar(value=False)
-        self._path = tk.StringVar()
+        self._base_path = tk.StringVar(value=str(Path.cwd().resolve()))
+        self._automatic_output = tk.BooleanVar(value=True)
+        self._destination_note = tk.StringVar(value='Register folder: will be determined from metadata')
+        self._resolved_output: Path | None = None
         self._existing = tk.StringVar(value=ExistingPolicy.ASK.value)
 
         self._menu = tk.Menu(self._root)
@@ -347,50 +353,76 @@ class App:
             pady=4,
         )
 
-        ttk.Label(
+        destination = ttk.LabelFrame(
             entry_frame,
-            text='Output directory (optional)',
-        ).grid(
+            text='Destination',
+            padding=10,
+        )
+        destination.grid(
             row=2,
             column=0,
+            columnspan=4,
+            pady=(0, 10),
+            sticky=tk.EW,
+        )
+        destination.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            destination,
+            text='Save in',
+        ).grid(
+            row=0,
+            column=0,
             padx=(0, 10),
-            pady=6,
+            pady=4,
             sticky=tk.W,
         )
         ttk.Entry(
-            entry_frame,
-            textvariable=self._path,
+            destination,
+            textvariable=self._base_path,
+            state='readonly',
         ).grid(
-            row=2,
+            row=0,
             column=1,
-            columnspan=2,
-            pady=6,
+            pady=4,
             sticky=tk.EW,
         )
-        ttk.Label(
-            entry_frame,
-            text='Leave empty to generate the register folder automatically',
-        ).grid(
-            row=3,
-            column=1,
-            columnspan=2,
-            sticky=tk.W,
-            pady=(0, 6),
-        )
         ttk.Button(
-            entry_frame,
-            text='Browse…',
+            destination,
+            text='Change…',
             command=self._browse_path,
         ).grid(
-            row=2,
-            column=3,
+            row=0,
+            column=2,
             padx=(10, 0),
-            pady=6,
+            pady=4,
+        )
+        ttk.Checkbutton(
+            destination,
+            text='Create a separate folder for each register (recommended)',
+            variable=self._automatic_output,
+            command=self._refresh_destination_mode,
+        ).grid(
+            row=1,
+            column=1,
+            columnspan=2,
+            pady=(4, 2),
+            sticky=tk.W,
+        )
+        ttk.Label(
+            destination,
+            textvariable=self._destination_note,
+        ).grid(
+            row=2,
+            column=1,
+            columnspan=2,
+            pady=(0, 4),
+            sticky=tk.W,
         )
 
         actions = ttk.Frame(entry_frame)
         actions.grid(
-            row=4,
+            row=3,
             column=0,
             columnspan=4,
             pady=(12, 0),
@@ -449,12 +481,28 @@ class App:
             fill=tk.X,
             pady=(0, 6),
         )
+        progress_row = ttk.Frame(footer)
+        progress_row.pack(fill=tk.X)
         self._progress_bar = ttk.Progressbar(
-            footer,
+            progress_row,
             mode='determinate',
             orient=tk.HORIZONTAL,
         )
-        self._progress_bar.pack(fill=tk.X)
+        self._progress_bar.pack(
+            side=tk.LEFT,
+            fill=tk.X,
+            expand=True,
+        )
+        self._open_folder_button = ttk.Button(
+            progress_row,
+            text='Open folder',
+            command=self._open_output_folder,
+            state=tk.DISABLED,
+        )
+        self._open_folder_button.pack(
+            side=tk.LEFT,
+            padx=(10, 0),
+        )
 
     def _show_about(self) -> None:
         msg = 'antenati: a tool to download data from the Portale Antenati\n'
@@ -463,9 +511,32 @@ class App:
         tkmsg.showinfo('About', msg)
 
     def _browse_path(self) -> None:
-        selected_path = tkfile.askdirectory()
+        selected_path = tkfile.askdirectory(initialdir=self._base_path.get())
         if selected_path:
-            self._path.set(selected_path)
+            self._base_path.set(str(Path(selected_path).resolve()))
+            self._resolved_output = None
+            self._open_folder_button.configure(state=tk.DISABLED)
+            self._refresh_destination_mode()
+
+    def _refresh_destination_mode(self) -> None:
+        self._resolved_output = None
+        self._open_folder_button.configure(state=tk.DISABLED)
+        if self._automatic_output.get():
+            self._destination_note.set('Register folder: will be determined from metadata')
+        else:
+            self._destination_note.set('Files will be saved directly in this folder')
+
+    def _open_output_folder(self) -> None:
+        directory = self._resolved_output
+        if directory is None or not directory.is_dir():
+            tkmsg.showwarning('Folder unavailable', 'The destination folder does not exist yet.')
+            return
+        if sys.platform == 'win32':
+            os.startfile(directory)  # type: ignore[attr-defined]
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', str(directory)])
+        else:
+            subprocess.Popen(['xdg-open', str(directory)])
 
     def _resolve_gui_policy(self, output: str, policy: ExistingPolicy) -> ExistingPolicy | None:
         if policy is not ExistingPolicy.ASK:
@@ -495,13 +566,19 @@ class App:
         url = self._url.get().strip()
         if not url:
             raise RuntimeError('Please enter a valid URL.')
-        output_value = self._path.get().strip()
+        base_path = self._base_path.get().strip()
+        automatic_output = bool(self._automatic_output.get())
+        self._resolved_output = None
+        self._open_folder_button.configure(state=tk.DISABLED)
+        self._destination_note.set('Resolving register folder…' if automatic_output else 'Files will be saved directly in this folder')
 
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
         params = DownloadParams(
             url=url,
-            output_dir=output_value or None,
+            output_dir=None if automatic_output else base_path,
+            output_base_dir=base_path,
+            automatic_output=automatic_output,
             size=self._size.get(),
             first=int(self._first.get()),
             last=last_val,
@@ -541,7 +618,11 @@ class App:
 
     def _handle_event(self, event: object) -> None:
         if isinstance(event, Destination):
-            self._path.set(event.path)
+            self._resolved_output = Path(event.path)
+            if self._automatic_output.get():
+                self._destination_note.set(f'Register folder: {self._resolved_output.name}')
+            else:
+                self._destination_note.set('Files will be saved directly in this folder')
         elif isinstance(event, ExistingOutput):
             policy = self._resolve_gui_policy(event.path, ExistingPolicy.ASK)
             if policy is None:
@@ -565,14 +646,18 @@ class App:
             self._terminal_received = True
             self._set_running(False)
             report = event.report
+            output = str(self._resolved_output) if self._resolved_output is not None else self._base_path.get()
             if report.successful:
-                self._footer_label.configure(text='Download complete')
+                self._footer_label.configure(text=f'Download complete · {output}')
+                self._open_folder_button.configure(state=tk.NORMAL)
                 tkmsg.showinfo(
                     'Download complete',
-                    f'Downloaded {report.completed}, reused {report.skipped}. New data: {format_bytes(report.bytes_written)}',
+                    f'Downloaded {report.completed}, reused {report.skipped}. New data: {format_bytes(report.bytes_written)}\n\nSaved to:\n{output}',
                 )
             else:
-                self._footer_label.configure(text='Download incomplete')
+                self._footer_label.configure(text=f'Download incomplete · {output}')
+                if self._resolved_output is not None and self._resolved_output.is_dir():
+                    self._open_folder_button.configure(state=tk.NORMAL)
                 details = '\n'.join(f'{failure.label}: {failure.reason}' for failure in report.failed)
                 tkmsg.showwarning(
                     'Incomplete download',
@@ -581,7 +666,10 @@ class App:
         elif isinstance(event, Cancelled):
             self._terminal_received = True
             self._set_running(False)
-            self._footer_label.configure(text='Download cancelled')
+            output = str(self._resolved_output) if self._resolved_output is not None else self._base_path.get()
+            self._footer_label.configure(text=f'Download cancelled · {output}')
+            if self._resolved_output is not None and self._resolved_output.is_dir():
+                self._open_folder_button.configure(state=tk.NORMAL)
             tkmsg.showinfo(
                 'Cancelled',
                 f'Download cancelled after {event.report.completed}/{event.report.expected} pages.',
@@ -590,6 +678,8 @@ class App:
             self._terminal_received = True
             self._set_running(False)
             self._footer_label.configure(text='Download failed')
+            if self._resolved_output is not None and self._resolved_output.is_dir():
+                self._open_folder_button.configure(state=tk.NORMAL)
             tkmsg.showerror('Error', event.message)
 
     def _set_running(self, running: bool) -> None:

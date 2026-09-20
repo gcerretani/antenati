@@ -8,6 +8,7 @@ import logging
 import queue
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from antenati.config import DownloadConfig
@@ -62,7 +63,10 @@ WorkerEvent = Phase | Destination | ExistingOutput | Progress | Tick | Done | Ca
 
 @dataclass
 class DownloadParams(DownloadConfig):
-    """Backward-compatible GUI name for the shared download configuration."""
+    """GUI download configuration with explicit automatic-output semantics."""
+
+    output_base_dir: str | None = None
+    automatic_output: bool = False
 
 
 class DownloaderFactory(Protocol):
@@ -123,14 +127,18 @@ class DownloadWorker:
             bytes_written=0,
         )
 
-    def _resolve_policy(self, downloader: Downloader, params: DownloadParams) -> ExistingPolicy | None:
-        if params.existing_policy is not ExistingPolicy.ASK:
-            return params.existing_policy
-        if not existing_output_requires_decision(downloader, params.output_dir):
+    def _resolve_policy(
+        self,
+        downloader: Downloader,
+        output: Path,
+        policy: ExistingPolicy,
+    ) -> ExistingPolicy | None:
+        if policy is not ExistingPolicy.ASK:
+            return policy
+        if not existing_output_requires_decision(downloader, output):
             return ExistingPolicy.ERROR
 
-        directory = output_directory(downloader, params.output_dir)
-        self.events.put(ExistingOutput(path=str(directory)))
+        self.events.put(ExistingOutput(path=str(output)))
         while not self._cancel.is_set():
             try:
                 return self._policy_responses.get(timeout=0.1)
@@ -145,16 +153,20 @@ class DownloadWorker:
             downloader = self._factory(params.url, params.first, params.last, params.descriptive_names)
             downloader.load()
 
-            directory = output_directory(downloader, params.output_dir)
+            if params.automatic_output:
+                base_directory = Path(params.output_base_dir or Path.cwd()).expanduser().resolve()
+                directory = (base_directory / downloader.dirname.name).resolve()
+            else:
+                directory = output_directory(downloader, params.output_dir).expanduser().resolve()
             self.events.put(Destination(path=str(directory)))
 
-            policy = self._resolve_policy(downloader, params)
+            policy = self._resolve_policy(downloader, directory, params.existing_policy)
             if policy is None:
                 self.events.put(Cancelled(report=self._cancelled_report(downloader)))
                 return
 
             self.events.put(Phase('Preparing output…'))
-            prepare_output(downloader, params.output_dir, policy)
+            prepare_output(downloader, directory, policy)
 
             completed = 0
 

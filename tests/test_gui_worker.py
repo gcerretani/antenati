@@ -71,10 +71,19 @@ def _drain_events(worker: DownloadWorker, timeout: float = 2.0) -> list[Any]:
         return events
 
 
-def _params(tmp_path: Path, *, output_dir: str | None = None, policy: ExistingPolicy = ExistingPolicy.OVERWRITE) -> DownloadParams:
+def _params(
+    tmp_path: Path,
+    *,
+    output_dir: str | None = None,
+    output_base_dir: str | None = None,
+    automatic_output: bool = False,
+    policy: ExistingPolicy = ExistingPolicy.OVERWRITE,
+) -> DownloadParams:
     return DownloadParams(
         url='https://example.org/gallery',
         output_dir=output_dir if output_dir is not None else str(tmp_path / 'out'),
+        output_base_dir=output_base_dir,
+        automatic_output=automatic_output,
         size=0,
         first=0,
         last=None,
@@ -107,30 +116,44 @@ def test_happy_path_emits_destination_phases_progress_ticks_and_done(tmp_path: P
     assert fake.loaded
 
 
-def test_empty_output_uses_generated_register_directory(tmp_path: Path) -> None:
-    generated = tmp_path / 'generated-register'
-    fake = _FakeDownloader(dirname=generated)
+def test_automatic_output_uses_fixed_base_and_generated_register_name(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    base.mkdir()
+    generated_name = 'generated-register'
+    fake = _FakeDownloader(dirname=Path(generated_name))
     worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
-    params = _params(tmp_path)
-    params.output_dir = None
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+    )
 
     worker.start(params)
     events = _drain_events(worker)
 
+    expected = (base / generated_name).resolve()
     destination = next(event for event in events if isinstance(event, Destination))
-    assert destination.path == str(generated)
-    assert generated.is_dir()
+    assert Path(destination.path).is_absolute()
+    assert destination.path == str(expected)
+    assert expected.is_dir()
     assert isinstance(events[-1], Done)
 
 
 def test_ask_policy_on_generated_existing_output_waits_for_gui_choice(tmp_path: Path) -> None:
-    generated = tmp_path / 'generated-register'
-    generated.mkdir()
+    base = tmp_path / 'downloads'
+    generated = base / 'generated-register'
+    generated.mkdir(parents=True)
     (generated / 'existing.txt').write_text('existing', encoding='utf-8')
-    fake = _FakeDownloader(dirname=generated)
+    fake = _FakeDownloader(dirname=Path('generated-register'))
     worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
-    params = _params(tmp_path, policy=ExistingPolicy.ASK)
-    params.output_dir = None
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+        policy=ExistingPolicy.ASK,
+    )
 
     worker.start(params)
     seen: list[Any] = []
@@ -140,7 +163,7 @@ def test_ask_policy_on_generated_existing_output_waits_for_gui_choice(tmp_path: 
         if isinstance(event, ExistingOutput):
             break
 
-    assert event.path == str(generated)
+    assert event.path == str(generated.resolve())
     assert worker.is_running()
 
     worker.resolve_existing_policy(ExistingPolicy.RESUME)
@@ -199,3 +222,38 @@ def test_is_running_flips_around_thread_lifetime(tmp_path: Path) -> None:
     worker.start(_params(tmp_path))
     worker.join(timeout=2.0)
     assert worker.is_running() is False
+
+
+def test_relative_custom_output_is_reported_as_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeDownloader(dirname=Path('generated-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    monkeypatch.chdir(tmp_path)
+    params = _params(tmp_path, output_dir='custom-output')
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert destination.path == str((tmp_path / 'custom-output').resolve())
+    assert Path(destination.path).is_absolute()
+
+
+def test_automatic_output_never_uses_previous_register_as_base(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    previous = base / 'previous-register'
+    previous.mkdir(parents=True)
+    fake = _FakeDownloader(dirname=Path('next-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+    )
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert destination.path == str((base / 'next-register').resolve())
+    assert destination.path != str((previous / 'next-register').resolve())
