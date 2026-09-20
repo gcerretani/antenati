@@ -4,6 +4,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from antenati.downloader import DownloadReport
+
 
 class AntenatiError(Exception):
     """Base class for all antenati-specific errors."""
@@ -31,6 +36,17 @@ class ResourceLimitError(AntenatiError):
 
 class WafChallengeError(AntenatiError):
     """The SAN server returned an AWS WAF challenge response that cannot be bypassed."""
+
+
+class DownloadFailedError(AntenatiError):
+    """A strict download run completed with an unsuccessful report."""
+
+    def __init__(self, report: DownloadReport):
+        super().__init__(
+            'Download did not complete successfully '
+            f'(completed={report.completed}, skipped={report.skipped}, failed={len(report.failed)}, cancelled={report.cancelled})'
+        )
+        self.report = report
 
 
 class ThreadError(AntenatiError):
