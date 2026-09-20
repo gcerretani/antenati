@@ -101,15 +101,14 @@ def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, polic
     typer.echo('  overwrite download again and replace planned files')
     typer.echo('  skip      reuse verified files; refuse ambiguous existing files')
     typer.echo('  cancel    stop without changing the directory')
-    selected = typer.prompt(
-        'Policy',
-        type=typer.Choice(['resume', 'overwrite', 'skip', 'cancel'], case_sensitive=False),
-        default='resume',
-        show_choices=False,
-    ).lower()
-    if selected == 'cancel':
-        raise typer.Exit(code=1)
-    return ExistingPolicy(selected)
+    choices = {policy.value for policy in (ExistingPolicy.RESUME, ExistingPolicy.OVERWRITE, ExistingPolicy.SKIP)}
+    while True:
+        selected = typer.prompt('Policy', default='resume', show_default=True).strip().lower()
+        if selected == 'cancel':
+            raise typer.Exit(code=1)
+        if selected in choices:
+            return ExistingPolicy(selected)
+        typer.echo('Choose one of: resume, overwrite, skip, cancel.', err=True)
 
 
 def _print_report(report: DownloadReport) -> None:
