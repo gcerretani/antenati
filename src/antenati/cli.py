@@ -18,6 +18,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from antenati import __copyright__, __version__
 from antenati.config import DownloadConfig
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, DownloadItem, DownloadReport, ProgressBar
+from antenati.errors import AntenatiError
 from antenati.formatting import format_bytes
 from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
 
@@ -247,17 +248,25 @@ def cli(
             dry_run=dry_run,
         ).validate()
     _configure_logging(verbose, debug)
-    downloader = wizard_downloader or Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
-    downloader.load()
-    if config.output_dir is not None:
-        downloader.dirname = Path(config.output_dir)
-    if config.dry_run:
-        print_preview(downloader, config.size)
-        return
-    downloader.print_gallery_info()
-    policy = _resolve_cli_policy(downloader, config.output_dir, config.existing_policy)
-    prepare_output(downloader, config.output_dir, policy)
-    report = run_cli(downloader, config.n_workers, config.size, policy)
+    try:
+        downloader = wizard_downloader or Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
+        downloader.load()
+        if config.output_dir is not None:
+            downloader.dirname = Path(config.output_dir)
+        if config.dry_run:
+            print_preview(downloader, config.size)
+            return
+        if wizard_downloader is None:
+            downloader.print_gallery_info()
+        policy = _resolve_cli_policy(downloader, config.output_dir, config.existing_policy)
+        prepare_output(downloader, config.output_dir, policy)
+        report = run_cli(downloader, config.n_workers, config.size, policy)
+    except (AntenatiError, OSError, RuntimeError, ValueError) as exc:
+        if debug:
+            raise
+        typer.echo(f'Error: {exc}', err=True)
+        raise typer.Exit(code=1) from None
+
     _print_report(report)
     if report.cancelled or report.failed or not report.successful:
         raise typer.Exit(code=1)
