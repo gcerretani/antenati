@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
@@ -16,6 +17,8 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from antenati.filesystem import atomic_replace
+
+logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = '.antenati-manifest.json'
 INDEX_FILENAME = '.antenati-index.json'
@@ -130,6 +133,7 @@ def write_provenance(
     requested_size: int,
     records: list[ImageRecord],
 ) -> None:
+    logger.debug('Writing provenance to %s (%d image records)', directory, len(records))
     manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + '\n'
     _atomic_write_text(directory / MANIFEST_FILENAME, manifest_text)
 
