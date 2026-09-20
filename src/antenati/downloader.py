@@ -199,15 +199,17 @@ class Downloader:
             response.close()
         return bytes(data)
 
-    def _fetch_text(self, url: str) -> str:
-        reply = http.fetch(self.session, url, stream=True)
+    def _fetch_text(self, url: str, role: http.UrlRole) -> str:
+        reply = http.fetch(self.session, url, role=role, stream=True)
         charset = http.get_content_charset(reply) or 'utf-8'
         return self._read_limited(reply, self.limits.max_metadata_bytes).decode(charset)
 
     def load(self) -> Downloader:
         if self._manifest is not None:
             return self
-        archive_id = None if iiif.is_manifest_url(self.url) else iiif.get_archive_id_from_url(self.url)
+        direct_manifest = iiif.is_manifest_url(self.url)
+        http.validate_url(self.url, http.UrlRole.MANIFEST if direct_manifest else http.UrlRole.GALLERY)
+        archive_id = None if direct_manifest else iiif.get_archive_id_from_url(self.url)
         logger.info('Loading manifest from %s', self.url)
         manifest, manifest_url = self._load_manifest()
         all_canvases = iiif.slice_canvases(manifest, 0, None)
@@ -242,21 +244,26 @@ class Downloader:
             DownloadItem(
                 canvas=canvas,
                 stem=stem,
-                source_url=iiif.manipulate_image_url(iiif.image_url_for_canvas(canvas), size),
+                source_url=self._trusted_image_url(canvas, size),
             )
             for canvas, stem in zip(self._canvases, selected_stems, strict=True)
         )
         self._plan = DownloadPlan(items=items, size=size)
         return self._plan
 
+    def _trusted_image_url(self, canvas: dict[str, Any], size: int) -> str:
+        source_url = iiif.manipulate_image_url(iiif.image_url_for_canvas(canvas), size)
+        http.validate_url(source_url, http.UrlRole.IMAGE)
+        return source_url
+
     def _load_manifest(self) -> tuple[dict[str, Any], str]:
         if iiif.is_manifest_url(self.url):
             manifest_url = self.url
         else:
-            gallery_html = self._fetch_text(self.url)
+            gallery_html = self._fetch_text(self.url, http.UrlRole.GALLERY)
             manifest_url = iiif.parse_manifest_url_from_html(gallery_html, self.url)
         logger.debug('Manifest URL: %s', manifest_url)
-        return loads(self._fetch_text(manifest_url)), manifest_url
+        return loads(self._fetch_text(manifest_url, http.UrlRole.MANIFEST)), manifest_url
 
     def _resolve_ark_id(self, canvases: list[dict[str, Any]], archive_id: str) -> str:
         first_canvas_url = str(canvases[0].get('@id', ''))
@@ -362,7 +369,7 @@ class Downloader:
         try:
             if cancel is not None and cancel.is_set():
                 raise CancelledError
-            reply = http.fetch(self.session, item.source_url, stream=True)
+            reply = http.fetch(self.session, item.source_url, role=http.UrlRole.IMAGE, stream=True)
             content_type = http.get_content_type(reply)
             extension = image_validation.extension_for_media_type(content_type)
             filename = self.dirname / f'{item.stem}{extension}'
