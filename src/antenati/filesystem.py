@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from os import PathLike
+
+logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = os.name == 'nt'
 _REPLACE_ATTEMPTS = 10
@@ -27,10 +30,22 @@ def atomic_replace(source: str | PathLike[str], destination: str | PathLike[str]
     for attempt in range(_REPLACE_ATTEMPTS):
         try:
             os.replace(source, destination)
+            if attempt:
+                logger.debug('Atomic replace succeeded after %d retries: %s', attempt, destination)
             return
         except OSError as exc:
-            transient = _IS_WINDOWS and getattr(exc, 'winerror', None) in _TRANSIENT_WINDOWS_ERRORS
+            winerror = getattr(exc, 'winerror', None)
+            transient = _IS_WINDOWS and winerror in _TRANSIENT_WINDOWS_ERRORS
             if not transient or attempt == _REPLACE_ATTEMPTS - 1:
+                logger.debug('Atomic replace failed: %s -> %s', source, destination, exc_info=True)
                 raise
+            logger.debug(
+                'Atomic replace blocked by Windows (WinError %s), retry %d/%d in %.0f ms: %s',
+                winerror,
+                attempt + 1,
+                _REPLACE_ATTEMPTS - 1,
+                delay * 1000,
+                destination,
+            )
             time.sleep(delay)
             delay = min(delay * 2, _MAX_RETRY_DELAY)
