@@ -8,7 +8,7 @@ from antenati import __version__
 from antenati.cli import app
 
 runner = CliRunner()
-_ANSI_RE = re.compile(r'\\x1b\\[[0-?]*[ -/]*[@-~]')
+_ANSI_RE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 
 def test_cli_help_uses_modern_workers_name_and_keeps_legacy_alias() -> None:
