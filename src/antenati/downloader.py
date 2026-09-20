@@ -25,6 +25,7 @@ from slugify import slugify
 from antenati import http, iiif, provenance
 from antenati import image as image_validation
 from antenati.errors import AntenatiError, DownloadFailedError, ResourceLimitError, ThreadError
+from antenati.filesystem import atomic_replace
 from antenati.validation import DownloadOptions, validate_download_options, validate_page_range
 
 logger = logging.getLogger(__name__)
@@ -345,7 +346,7 @@ class Downloader:
             return record
         if target.exists():
             raise RuntimeError(f'Refusing to rename verified file {current} to {target}: target already exists')
-        os.replace(current, target)
+        atomic_replace(current, target)
         return replace(record, filename=target.name)
 
     @staticmethod
@@ -399,7 +400,7 @@ class Downloader:
             image_validation.validate_image_file(content_type, Path(temp_name))
             if cancel is not None and cancel.is_set():
                 raise CancelledError
-            os.replace(temp_name, filename)
+            atomic_replace(temp_name, filename)
             temp_name = None
             return provenance.ImageRecord.create(
                 canvas_id=str(item.canvas.get('@id', '')),
