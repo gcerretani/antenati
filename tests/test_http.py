@@ -137,8 +137,12 @@ def test_fetch_does_not_treat_plain_202_as_waf() -> None:
         ('https://antenati.cultura.gov.it.evil.example/x', antenati_http.UrlRole.GALLERY),
         ('https://antenati.cultura.gov.it@evil.example/x', antenati_http.UrlRole.GALLERY),
         ('https://antenati.cultura.gov.it:8443/x', antenati_http.UrlRole.GALLERY),
-        ('https://dam-antenati.cultura.gov.it/x', antenati_http.UrlRole.GALLERY),
-        ('https://iiif-antenati.cultura.gov.it/x', antenati_http.UrlRole.MANIFEST),
+        ('https://localhost/x', antenati_http.UrlRole.MANIFEST),
+        ('https://service.local/x', antenati_http.UrlRole.IMAGE),
+        ('https://127.0.0.1/x', antenati_http.UrlRole.MANIFEST),
+        ('https://10.0.0.1/x', antenati_http.UrlRole.IMAGE),
+        ('https://169.254.169.254/latest/meta-data', antenati_http.UrlRole.MANIFEST),
+        ('https://[::1]/x', antenati_http.UrlRole.IMAGE),
     ],
 )
 def test_validate_url_rejects_untrusted_shapes(url: str, role: antenati_http.UrlRole) -> None:
@@ -152,10 +156,12 @@ def test_validate_url_rejects_untrusted_shapes(url: str, role: antenati_http.Url
         ('https://antenati.cultura.gov.it/x', antenati_http.UrlRole.GALLERY),
         ('https://antenati.cultura.gov.it:443/x', antenati_http.UrlRole.GALLERY),
         ('https://dam-antenati.cultura.gov.it/x', antenati_http.UrlRole.MANIFEST),
+        ('https://future-manifest-cdn.example/x', antenati_http.UrlRole.MANIFEST),
         ('https://iiif-antenati.cultura.gov.it/x', antenati_http.UrlRole.IMAGE),
+        ('https://future-image-cdn.example/x', antenati_http.UrlRole.IMAGE),
     ],
 )
-def test_validate_url_accepts_expected_antenati_roles(url: str, role: antenati_http.UrlRole) -> None:
+def test_validate_url_accepts_expected_trust_chain_shapes(url: str, role: antenati_http.UrlRole) -> None:
     antenati_http.validate_url(url, role)
 
 
@@ -171,7 +177,7 @@ def test_fetch_follows_same_role_redirect() -> None:
         assert len(rsps.calls) == 2
 
 
-def test_fetch_rejects_cross_host_redirect_before_following_it() -> None:
+def test_gallery_fetch_rejects_cross_host_redirect_before_following_it() -> None:
     session = antenati_http.build_session()
     start = 'https://antenati.cultura.gov.it/start'
     target = 'https://evil.example/steal'
@@ -180,4 +186,28 @@ def test_fetch_rejects_cross_host_redirect_before_following_it() -> None:
         rsps.add(responses.GET, target, body='should-not-be-requested', status=200)
         with pytest.raises(UrlTrustError, match='untrusted gallery host'):
             antenati_http.fetch(session, start, role=antenati_http.UrlRole.GALLERY)
+        assert len(rsps.calls) == 1
+
+
+def test_derived_resource_redirect_can_change_public_host() -> None:
+    session = antenati_http.build_session()
+    start = 'https://dam-antenati.cultura.gov.it/start'
+    target = 'https://future-backend.example/manifest'
+    with responses.RequestsMock() as rsps:
+        rsps.add(responses.GET, start, status=302, headers={'Location': target})
+        rsps.add(responses.GET, target, body='{}', status=200, content_type='application/json')
+        reply = antenati_http.fetch(session, start, role=antenati_http.UrlRole.MANIFEST)
+        assert reply.text == '{}'
+        assert len(rsps.calls) == 2
+
+
+def test_derived_resource_redirect_rejects_private_destination_before_following_it() -> None:
+    session = antenati_http.build_session()
+    start = 'https://dam-antenati.cultura.gov.it/start'
+    target = 'https://127.0.0.1/internal'
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        rsps.add(responses.GET, start, status=302, headers={'Location': target})
+        rsps.add(responses.GET, target, body='should-not-be-requested', status=200)
+        with pytest.raises(UrlTrustError, match='non-public IP'):
+            antenati_http.fetch(session, start, role=antenati_http.UrlRole.MANIFEST)
         assert len(rsps.calls) == 1
