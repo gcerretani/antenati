@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from enum import Enum
 from pathlib import Path
 from typing import Annotated
@@ -111,6 +112,92 @@ def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, polic
         typer.echo('Choose one of: resume, overwrite, skip, cancel.', err=True)
 
 
+def _is_interactive_terminal() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _prompt_int(label: str, default: int, *, minimum: int = 0) -> int:
+    while True:
+        value = typer.prompt(label, default=default, type=int)
+        if value >= minimum:
+            return value
+        typer.echo(f'Value must be >= {minimum}.', err=True)
+
+
+def _run_wizard() -> DownloadConfig:
+    if not _is_interactive_terminal():
+        raise typer.UsageError('Missing argument URL. Run with --help for usage.')
+
+    typer.echo()
+    typer.echo('Antenati interactive setup')
+    typer.echo()
+
+    url = typer.prompt('Gallery or manifest URL').strip()
+    downloader = Downloader(url, 0, None)
+    downloader.load()
+
+    typer.echo()
+    downloader.print_gallery_info()
+    typer.echo()
+
+    selection = typer.prompt('Pages [all/range]', default='all').strip().lower()
+    if selection == 'range':
+        first = _prompt_int('First image (0-based)', 0)
+        last_value = _prompt_int('Last image (exclusive)', downloader.gallery_length, minimum=first + 1)
+        last: int | None = last_value
+    else:
+        first = 0
+        last = None
+
+    size_choice = typer.prompt('Image size [full/3000/2000/1000/custom]', default='full').strip().lower()
+    if size_choice == 'full':
+        size = 0
+    elif size_choice in {'3000', '2000', '1000'}:
+        size = int(size_choice)
+    elif size_choice == 'custom':
+        size = _prompt_int('Image size in pixels', 2000, minimum=1)
+    else:
+        raise typer.BadParameter('Choose full, 3000, 2000, 1000, or custom.', param_hint='image size')
+
+    default_output = str(downloader.dirname)
+    output_text = typer.prompt('Output directory', default=default_output).strip()
+    output_dir = output_text or default_output
+
+    existing = ExistingPolicy.ASK
+    directory = Path(output_dir)
+    if directory.exists() and directory.is_dir() and any(directory.iterdir()):
+        typer.echo()
+        typer.echo('Output directory already exists and is not empty.')
+        typer.echo('  resume    verify and reuse valid downloads (recommended)')
+        typer.echo('  overwrite download again and replace planned files')
+        typer.echo('  skip      reuse verified files; refuse ambiguous existing files')
+        typer.echo('  cancel    stop')
+        while True:
+            selected = typer.prompt('Policy', default='resume').strip().lower()
+            if selected == 'cancel':
+                raise typer.Exit(code=1)
+            if selected in {ExistingPolicy.RESUME.value, ExistingPolicy.OVERWRITE.value, ExistingPolicy.SKIP.value}:
+                existing = ExistingPolicy(selected)
+                break
+            typer.echo('Choose one of: resume, overwrite, skip, cancel.', err=True)
+
+    typer.echo()
+    if not typer.confirm('Start download?', default=True):
+        raise typer.Exit(code=1)
+
+    return DownloadConfig(
+        url=url,
+        output_dir=output_dir,
+        size=size,
+        first=first,
+        last=last,
+        n_workers=DEFAULT_N_THREADS,
+        descriptive_names=False,
+        existing_policy=existing,
+        dry_run=False,
+    ).validate()
+
+
 def _print_report(report: DownloadReport) -> None:
     print(
         f'Completed: {report.completed}/{report.expected}; skipped: {report.skipped}; '
@@ -122,7 +209,7 @@ def _print_report(report: DownloadReport) -> None:
 
 @app.command()
 def cli(
-    url: Annotated[str, typer.Argument(help='URL of the gallery page or its IIIF manifest')],
+    url: Annotated[str | None, typer.Argument(help='URL of the gallery page or its IIIF manifest')] = None,
     size: Annotated[int, typer.Option('-s', '--size', help='Image size in pixels; 0 means full size')] = DEFAULT_SIZE,
     workers: Annotated[int, typer.Option('-n', '--workers', '--nthreads', help='Maximum number of concurrent download workers')] = DEFAULT_N_THREADS,
     first: Annotated[int, typer.Option('-f', '--first', help='First image to download')] = 0,
@@ -140,17 +227,20 @@ def cli(
     if output_format is OutputFormat.JSON:
         raise typer.BadParameter('JSON output is scaffolded but not implemented yet in this draft', param_hint='--format')
 
-    config = DownloadConfig(
-        url=url,
-        output_dir=str(output) if output is not None else None,
-        size=size,
-        first=first,
-        last=last,
-        n_workers=workers,
-        descriptive_names=descriptive_names,
-        existing_policy=existing,
-        dry_run=dry_run,
-    ).validate()
+    if url is None:
+        config = _run_wizard()
+    else:
+        config = DownloadConfig(
+            url=url,
+            output_dir=str(output) if output is not None else None,
+            size=size,
+            first=first,
+            last=last,
+            n_workers=workers,
+            descriptive_names=descriptive_names,
+            existing_policy=existing,
+            dry_run=dry_run,
+        ).validate()
     _configure_logging(verbose, debug)
     downloader = Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
     downloader.load()
