@@ -13,7 +13,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 import typer
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
+from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn
 
 from antenati import __copyright__, __version__
 from antenati.config import DownloadConfig
@@ -50,6 +50,7 @@ def _configure_logging(verbosity: int, debug: bool = False) -> None:
     # already logs requests, redirects and responses with the useful context.
     logging.basicConfig(level=logging.WARNING, format='%(levelname)s %(name)s: %(message)s')
     logging.getLogger('antenati').setLevel(level)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 
 def _version_callback(value: bool) -> None:
@@ -76,7 +77,7 @@ def run_cli(
         TaskProgressColumn(),
         TextColumn('{task.completed:.0f}/{task.total:.0f}'),
     )
-    task_id = None
+    task_id: TaskID | None = None
 
     def set_total(total: int) -> None:
         nonlocal task_id
