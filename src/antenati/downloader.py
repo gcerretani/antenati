@@ -10,7 +10,7 @@ import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, CancelledError, Future, ThreadPoolExecutor, wait
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from json import loads
 from os import mkdir, path
@@ -26,7 +26,7 @@ from slugify import slugify
 
 from antenati import http, iiif, provenance
 from antenati import image as image_validation
-from antenati.errors import AntenatiError, ResourceLimitError, ThreadError
+from antenati.errors import AntenatiError, DownloadFailedError, ResourceLimitError, ThreadError
 from antenati.validation import DownloadOptions, validate_download_options, validate_page_range
 
 logger = logging.getLogger(__name__)
@@ -327,6 +327,27 @@ class Downloader:
     def _resume_key(item: DownloadItem) -> tuple[str, str]:
         return str(item.canvas.get('@id', '')), item.source_url
 
+    def _reconcile_verified_filename(
+        self,
+        item: DownloadItem,
+        record: provenance.ImageRecord,
+    ) -> provenance.ImageRecord:
+        """Rename a verified reused file when the current plan changed its stem."""
+        current = self.dirname / record.filename
+        target = self.dirname / f'{item.stem}{Path(record.filename).suffix}'
+        if current == target:
+            return record
+        if target.exists():
+            raise RuntimeError(f'Refusing to rename verified file {current} to {target}: target already exists')
+        os.replace(current, target)
+        return replace(record, filename=target.name)
+
+    @staticmethod
+    def _return_report(report: DownloadReport, *, strict: bool) -> DownloadReport:
+        if strict and not report.successful:
+            raise DownloadFailedError(report)
+        return report
+
     def _thread_main(
         self,
         item: DownloadItem,
@@ -437,13 +458,15 @@ class Downloader:
         cancel: threading.Event | None = None,
         *,
         resume: bool = False,
+        strict: bool = False,
     ) -> DownloadReport:
         validate_download_options(DownloadOptions(first=self.first, last=self.last, size=size, n_workers=n_workers))
         plan = self.plan(size)
         progress.set_total(plan.expected)
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any image work was submitted')
-            return DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
+            report = DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
+            return self._return_report(report, strict=strict)
         verified = provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
         plan_keys = {self._resume_key(item) for item in plan.items}
         records: list[provenance.ImageRecord] = provenance.carry_over_records(
@@ -456,7 +479,7 @@ class Downloader:
             if existing is None:
                 pending.append(item)
             else:
-                records.append(existing)
+                records.append(self._reconcile_verified_filename(item, existing))
                 skipped += 1
                 progress.update()
         attempted = 0
@@ -499,7 +522,7 @@ class Downloader:
                 if not cancelled:
                     self._fill_futures(executor, item_iter, in_flight, in_flight_limit, submit)
         self._persist_provenance(size, records)
-        return DownloadReport(
+        report = DownloadReport(
             expected=plan.expected,
             attempted=attempted,
             completed=completed,
@@ -508,3 +531,4 @@ class Downloader:
             cancelled=cancelled,
             bytes_written=bytes_written,
         )
+        return self._return_report(report, strict=strict)
