@@ -20,7 +20,7 @@ from antenati.output import ExistingPolicy, prepare_output, run_with_policy
 from tests.conftest import MANIFEST_URL, TINY_JPEG
 
 _LABELS = ('0001', '0002', '0003')
-_IMAGE_PREFIX = 'https://iiif.example.org/iiif/img'
+_IMAGE_PREFIX = 'https://iiif-antenati.cultura.gov.it/iiif/img'
 
 
 def _progress() -> ProgressBar:

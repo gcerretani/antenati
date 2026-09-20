@@ -34,6 +34,10 @@ class ResourceLimitError(AntenatiError):
     """A configured safety limit was exceeded."""
 
 
+class UrlTrustError(AntenatiError):
+    """A network URL violates the active Antenati trust policy."""
+
+
 class WafChallengeError(AntenatiError):
     """The SAN server returned an AWS WAF challenge response that cannot be bypassed."""
 

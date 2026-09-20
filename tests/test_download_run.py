@@ -20,7 +20,7 @@ def _null_progress() -> ProgressBar:
 
 
 def _image_url(canvas_label: str, size: int) -> str:
-    base = f'https://iiif.example.org/iiif/img{canvas_label[-1]}'
+    base = f'https://iiif-antenati.cultura.gov.it/iiif/img{canvas_label[-1]}'
     size_part = f'!{size},{size}' if size > 0 else 'pct:100'
     return f'{base}/full/{size_part}/0/default.jpg'
 

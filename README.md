@@ -90,6 +90,8 @@ The supported source is the **Portale Antenati** and the IIIF structures current
 
 `antenati` is IIIF-based internally, but it is **not currently a generic IIIF downloader**. Broader Presentation/Image API variants may be unsupported even when they are valid IIIF.
 
+For v7, the user-facing gallery boundary is the public `https://antenati.cultura.gov.it` portal. Manifest and image endpoints discovered from trusted Antenati content are allowed to move between public HTTPS backend/CDN hosts without requiring a code update. Derived URLs and every redirect are still validated before use: HTTP, credentials in URLs, unusual ports, localhost and private/link-local IP destinations are rejected. Generic IIIF support, if added later, can use an explicit source profile without weakening this trust chain.
+
 ## Command line
 
 Basic use:

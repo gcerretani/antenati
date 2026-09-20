@@ -18,7 +18,7 @@ def _null_progress() -> ProgressBar:
 def test_run_persists_manifest_and_per_image_provenance(mocked_http, tmp_path: Path) -> None:
     downloader = Downloader(GALLERY_URL, first=0, last=1)
     downloader.check_dir(parentdir=str(tmp_path), interactive=False)
-    image_url = 'https://iiif.example.org/iiif/img1/full/pct:100/0/default.jpg'
+    image_url = 'https://iiif-antenati.cultura.gov.it/iiif/img1/full/pct:100/0/default.jpg'
     mocked_http.add(responses.GET, image_url, body=TINY_JPEG, status=200, content_type='image/jpeg')
 
     report = downloader.run(n_workers=1, size=0, progress=_null_progress())

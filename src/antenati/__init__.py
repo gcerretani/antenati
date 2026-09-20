@@ -27,7 +27,7 @@ from antenati.downloader import (
     PageFailure,
     ProgressBar,
 )
-from antenati.errors import DownloadFailedError, ThreadError
+from antenati.errors import DownloadFailedError, ThreadError, UrlTrustError
 
 __all__ = [
     'DEFAULT_N_THREADS',
@@ -40,6 +40,7 @@ __all__ = [
     'PageFailure',
     'ProgressBar',
     'ThreadError',
+    'UrlTrustError',
     '__author__',
     '__contact__',
     '__copyright__',

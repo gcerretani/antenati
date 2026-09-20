@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI `--dry-run` preview of the exact planned pages, filenames and image URLs without image writes (#63)
 - Shared CLI/GUI configuration model, including worker-count and descriptive-filename controls in the GUI (#64)
 - Resource ceilings for metadata, image size, canvas count, total bytes and bounded in-flight work (#50)
+- Explicit Antenati HTTPS trust chain: public portal input validation plus public-network validation for discovered manifest/image backends and every redirect, without hardcoding current internal CDN hostnames (#48)
 - Optional `strict=True` programmatic download mode that raises `DownloadFailedError` while retaining the structured report on the exception (#75)
 
 ### Changed

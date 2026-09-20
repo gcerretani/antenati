@@ -1,6 +1,6 @@
 {
   "@context": "http://iiif.io/api/presentation/2/context.json",
-  "@id": "https://iiif.example.org/ark/12657/iiif-19944535/manifest",
+  "@id": "https://dam-antenati.cultura.gov.it/antenati/containers/test/manifest",
   "@type": "sc:Manifest",
   "label": "Test gallery",
   "metadata": [
@@ -22,7 +22,7 @@
             {
               "@type": "oa:Annotation",
               "resource": {
-                "@id": "https://iiif.example.org/iiif/img1/full/full/0/default.jpg",
+                "@id": "https://iiif-antenati.cultura.gov.it/iiif/img1/full/full/0/default.jpg",
                 "@type": "dctypes:Image",
                 "format": "image/jpeg"
               }
@@ -37,7 +37,7 @@
             {
               "@type": "oa:Annotation",
               "resource": {
-                "@id": "https://iiif.example.org/iiif/img2/full/full/0/default.jpg",
+                "@id": "https://iiif-antenati.cultura.gov.it/iiif/img2/full/full/0/default.jpg",
                 "@type": "dctypes:Image",
                 "format": "image/jpeg"
               }
@@ -52,7 +52,7 @@
             {
               "@type": "oa:Annotation",
               "resource": {
-                "@id": "https://iiif.example.org/iiif/img3/full/full/0/default.jpg",
+                "@id": "https://iiif-antenati.cultura.gov.it/iiif/img3/full/full/0/default.jpg",
                 "@type": "dctypes:Image",
                 "format": "image/jpeg"
               }
