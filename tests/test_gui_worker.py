@@ -9,18 +9,40 @@ from typing import Any
 import pytest
 
 from antenati.downloader import DownloadReport, ProgressBar
-from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Progress, Tick
+from antenati.gui.worker import (
+    Cancelled,
+    Destination,
+    Done,
+    DownloadParams,
+    DownloadWorker,
+    ExistingOutput,
+    Failed,
+    Phase,
+    Progress,
+    Tick,
+)
 from antenati.output import ExistingPolicy
 
 
 class _FakeDownloader:
-    def __init__(self, n_canvases: int = 3, total_bytes: int = 42, raise_in_run: Exception | None = None, block_for_cancel: bool = False) -> None:
-        self.dirname = Path('ignored')
+    def __init__(
+        self,
+        n_canvases: int = 3,
+        total_bytes: int = 42,
+        raise_in_run: Exception | None = None,
+        block_for_cancel: bool = False,
+        dirname: Path | None = None,
+    ) -> None:
+        self.dirname = dirname or Path('ignored')
         self._n_canvases = n_canvases
         self._total_bytes = total_bytes
         self._raise = raise_in_run
         self._block_for_cancel = block_for_cancel
         self.loaded = False
+
+    @property
+    def gallery_length(self) -> int:
+        return self._n_canvases
 
     def load(self):
         self.loaded = True
@@ -49,31 +71,109 @@ def _drain_events(worker: DownloadWorker, timeout: float = 2.0) -> list[Any]:
         return events
 
 
-def _params(tmp_path: Path) -> DownloadParams:
+def _params(
+    tmp_path: Path,
+    *,
+    output_dir: str | None = None,
+    output_base_dir: str | None = None,
+    automatic_output: bool = False,
+    policy: ExistingPolicy = ExistingPolicy.OVERWRITE,
+) -> DownloadParams:
     return DownloadParams(
         url='https://example.org/gallery',
-        output_dir=str(tmp_path / 'out'),
+        output_dir=output_dir if output_dir is not None else str(tmp_path / 'out'),
+        output_base_dir=output_base_dir,
+        automatic_output=automatic_output,
         size=0,
         first=0,
         last=None,
-        existing_policy=ExistingPolicy.OVERWRITE,
+        existing_policy=policy,
     )
 
 
-def test_happy_path_emits_progress_ticks_and_done(tmp_path: Path) -> None:
+def test_happy_path_emits_destination_phases_progress_ticks_and_done(tmp_path: Path) -> None:
+    output = tmp_path / 'out'
     fake = _FakeDownloader(n_canvases=3, total_bytes=12345)
     worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
     worker.start(_params(tmp_path))
     events = _drain_events(worker)
-    assert isinstance(events[0], Progress)
-    assert events[0].total == 3
-    assert sum(isinstance(event, Tick) for event in events) == 3
+
+    destinations = [event for event in events if isinstance(event, Destination)]
+    assert [event.path for event in destinations] == [str(output)]
+
+    phases = [event for event in events if isinstance(event, Phase)]
+    assert [phase.message for phase in phases] == ['Loading register metadata…', 'Preparing output…', 'Planning download…']
+
+    progress_events = [event for event in events if isinstance(event, Progress)]
+    assert len(progress_events) == 1
+    assert progress_events[0].total == 3
+
+    ticks = [event for event in events if isinstance(event, Tick)]
+    assert [tick.completed for tick in ticks] == [1, 2, 3]
+
     assert isinstance(events[-1], Done)
     assert events[-1].report.bytes_written == 12345
     assert fake.loaded
 
 
-def test_constructor_failure_emits_failed_event(tmp_path: Path) -> None:
+def test_automatic_output_uses_fixed_base_and_generated_register_name(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    base.mkdir()
+    generated_name = 'generated-register'
+    fake = _FakeDownloader(dirname=Path(generated_name))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+    )
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    expected = (base / generated_name).resolve()
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert Path(destination.path).is_absolute()
+    assert destination.path == str(expected)
+    assert expected.is_dir()
+    assert isinstance(events[-1], Done)
+
+
+def test_ask_policy_on_generated_existing_output_waits_for_gui_choice(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    generated = base / 'generated-register'
+    generated.mkdir(parents=True)
+    (generated / 'existing.txt').write_text('existing', encoding='utf-8')
+    fake = _FakeDownloader(dirname=Path('generated-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+        policy=ExistingPolicy.ASK,
+    )
+
+    worker.start(params)
+    seen: list[Any] = []
+    while True:
+        event = worker.events.get(timeout=2.0)
+        seen.append(event)
+        if isinstance(event, ExistingOutput):
+            break
+
+    assert event.path == str(generated.resolve())
+    assert worker.is_running()
+
+    worker.resolve_existing_policy(ExistingPolicy.RESUME)
+    remaining = _drain_events(worker)
+
+    assert any(isinstance(item, Destination) for item in seen)
+    assert isinstance(remaining[-1], Done)
+
+
+def test_constructor_failure_emits_phase_then_failed_event(tmp_path: Path) -> None:
     def boom(url: str, first: int, last: int | None, descriptive_names: bool = False):
         del url, first, last, descriptive_names
         raise RuntimeError('manifest blew up')
@@ -81,9 +181,9 @@ def test_constructor_failure_emits_failed_event(tmp_path: Path) -> None:
     worker = DownloadWorker(factory=boom)
     worker.start(_params(tmp_path))
     events = _drain_events(worker)
-    assert len(events) == 1
-    assert isinstance(events[0], Failed)
-    assert 'manifest blew up' in events[0].message
+    assert isinstance(events[0], Phase)
+    assert isinstance(events[-1], Failed)
+    assert 'manifest blew up' in events[-1].message
 
 
 def test_run_failure_emits_failed_event(tmp_path: Path) -> None:
@@ -122,3 +222,38 @@ def test_is_running_flips_around_thread_lifetime(tmp_path: Path) -> None:
     worker.start(_params(tmp_path))
     worker.join(timeout=2.0)
     assert worker.is_running() is False
+
+
+def test_relative_custom_output_is_reported_as_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeDownloader(dirname=Path('generated-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    monkeypatch.chdir(tmp_path)
+    params = _params(tmp_path, output_dir='custom-output')
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert destination.path == str((tmp_path / 'custom-output').resolve())
+    assert Path(destination.path).is_absolute()
+
+
+def test_automatic_output_never_uses_previous_register_as_base(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    previous = base / 'previous-register'
+    previous.mkdir(parents=True)
+    fake = _FakeDownloader(dirname=Path('next-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+    )
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert destination.path == str((base / 'next-register').resolve())
+    assert destination.path != str((previous / 'next-register').resolve())

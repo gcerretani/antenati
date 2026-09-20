@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resource ceilings for metadata, image size, canvas count, total bytes and bounded in-flight work (#50)
 - Explicit Antenati HTTPS trust chain: public portal input validation plus public-network validation for discovered manifest/image backends and every redirect, without hardcoding current internal CDN hostnames (#48)
 - Optional `strict=True` programmatic download mode that raises `DownloadFailedError` while retaining the structured report on the exception (#75)
+- Modern Typer/Rich command-line interface with a TTY-only guided wizard, cleaned metadata cards, loading status, structured progress/report panels and focused debug diagnostics (#79)
+- Versioned machine-readable `--format json` output for both downloads and dry-run plans, with stdout kept free of Rich/progress rendering (#79)
 
 ### Changed
 - **Breaking:** `Downloader.run()` no longer raises automatically for partial page failures; it returns `DownloadReport` and callers must inspect `report.successful`/`report.failed`, or opt in to `strict=True` for exception-based handling (#60, #75)
@@ -25,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Image bodies are streamed instead of buffered in memory, and queued work is bounded relative to worker count (#50)
 - CLI, GUI and programmatic execution now share preflight validation for page ranges, image size and worker count (#52)
 - README now documents standalone GitHub Release executables as the recommended path for non-Python users, alongside PyPI and source/development installation, and describes the actual single-gallery/register scope and integrity guarantees (#68)
+- GUI progress now distinguishes manifest/planning phases with an indeterminate animation before switching to determinate per-page progress (#79)
+- The GUI destination model now separates a fixed absolute base directory from the metadata-derived register folder: automatic per-register subfolders never replace the base path, preventing confusing apparent nesting between consecutive downloads; direct-to-folder mode and Open folder remain available (#79)
+- GUI status text and register-folder display are width-stable: long destination paths no longer resize the application window between downloads (#79)
 
 ### Fixed
 - Reject unsupported media types, HTML/text responses, corrupt image data and MIME/signature mismatches before a final image file is committed (#47)
@@ -32,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Existing files are never silently treated as valid by resume/skip semantics without matching provenance and integrity checks (#59, #62)
 - Restored interactive handling of non-empty output directories through the explicit `ask` policy instead of failing by default (#62)
 - Verified resume/skip now reconciles an already-verified file to the filename produced by the current naming mode, without silently overwriting an unrelated target (#76)
+- Portal metadata rendered by the CLI no longer exposes raw HTML anchor tags.
+- Atomic file promotion retries transient Windows access-denied/sharing locks before reporting a real write failure.
 
 ### Testing
 - Expanded offline regression coverage for cancellation side effects, filename collisions and padding, atomic/integrity guarantees, report/file consistency, provenance, verified resume, output policies, resource limits and shared configuration (#66)

@@ -8,6 +8,7 @@ opt-in integration canaries.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -124,13 +125,14 @@ def test_cli_default_ask_can_resume_existing_download(
     first_code, _, first_stderr = _invoke_cli(monkeypatch, capsys, MANIFEST_URL, '--output', str(output), '--existing', 'overwrite')
     assert first_code == 0, first_stderr
     image_calls_before = _image_request_count(mocked_http)
-    monkeypatch.setattr(antenati_cli.click, 'prompt', lambda *_args, **_kwargs: 'resume')
+    monkeypatch.setattr(antenati_cli.typer, 'prompt', lambda *_args, **_kwargs: 'resume')
 
     resumed_code, resumed_stdout, resumed_stderr = _invoke_cli(monkeypatch, capsys, MANIFEST_URL, '--output', str(output))
 
     assert resumed_code == 0, resumed_stderr
-    assert 'Choose how to handle existing files' in resumed_stdout
-    assert 'skipped: 3' in resumed_stdout
+    assert 'Existing output' in resumed_stdout
+    assert 'Reused' in resumed_stdout
+    assert '3' in resumed_stdout
     assert _image_request_count(mocked_http) == image_calls_before
 
 
@@ -145,10 +147,123 @@ def test_cli_explicit_error_policy_rejects_existing_output_without_image_request
     first_code, _, first_stderr = _invoke_cli(monkeypatch, capsys, MANIFEST_URL, '--output', str(output), '--existing', 'overwrite')
     assert first_code == 0, first_stderr
     image_calls_before = _image_request_count(mocked_http)
-    monkeypatch.setattr(sys, 'argv', ['antenati', MANIFEST_URL, '--output', str(output), '--existing', 'error'])
+    code, _stdout, stderr = _invoke_cli(
+        monkeypatch,
+        capsys,
+        MANIFEST_URL,
+        '--output',
+        str(output),
+        '--existing',
+        'error',
+    )
 
-    with pytest.raises(RuntimeError, match='already exists and is not empty'):
-        antenati_cli.main()
-
-    capsys.readouterr()
+    assert code == 1
+    assert 'already exists and is not empty' in stderr
     assert _image_request_count(mocked_http) == image_calls_before
+
+
+def test_cli_json_download_emits_only_machine_readable_result(
+    mocked_http,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    _register_jpegs(mocked_http)
+    output = tmp_path / 'archive'
+
+    code, stdout, stderr = _invoke_cli(
+        monkeypatch,
+        capsys,
+        MANIFEST_URL,
+        '--output',
+        str(output),
+        '--existing',
+        'overwrite',
+        '--format',
+        'json',
+    )
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert '\x1b[' not in stdout
+    assert payload['schema_version'] == 1
+    assert payload['operation'] == 'download'
+    assert payload['source']['manifest_url'] == MANIFEST_URL
+    assert payload['output']['directory'] == str(output)
+    assert payload['options']['existing'] == 'overwrite'
+    assert payload['result'] == {
+        'successful': True,
+        'expected': 3,
+        'attempted': 3,
+        'completed': 3,
+        'skipped': 0,
+        'failed': [],
+        'cancelled': False,
+        'remaining': 0,
+        'bytes_written': len(TINY_JPEG) * 3,
+    }
+
+
+def test_cli_json_dry_run_emits_structured_plan_without_writes(
+    mocked_http,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    _register_jpegs(mocked_http)
+    output = tmp_path / 'archive'
+    image_calls_before = _image_request_count(mocked_http)
+
+    code, stdout, stderr = _invoke_cli(
+        monkeypatch,
+        capsys,
+        MANIFEST_URL,
+        '--output',
+        str(output),
+        '--dry-run',
+        '--format',
+        'json',
+    )
+
+    assert code == 0, stderr
+    payload = json.loads(stdout)
+    assert payload['operation'] == 'dry-run'
+    assert payload['plan']['expected'] == 3
+    assert [item['filename'] for item in payload['plan']['items']] == ['0001.jpg', '0002.jpg', '0003.jpg']
+    assert payload['plan']['items'][0]['source_url'] == _image_url('0001')
+    assert _image_request_count(mocked_http) == image_calls_before
+    assert not output.exists()
+
+
+def test_cli_json_never_prompts_for_existing_policy(
+    mocked_http,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    _register_jpegs(mocked_http)
+    output = tmp_path / 'archive'
+    first_code, _, first_stderr = _invoke_cli(
+        monkeypatch,
+        capsys,
+        MANIFEST_URL,
+        '--output',
+        str(output),
+        '--existing',
+        'overwrite',
+    )
+    assert first_code == 0, first_stderr
+
+    code, stdout, stderr = _invoke_cli(
+        monkeypatch,
+        capsys,
+        MANIFEST_URL,
+        '--output',
+        str(output),
+        '--format',
+        'json',
+    )
+
+    assert code == 1
+    assert stdout == ''
+    assert 'Choose an explicit --existing policy' in ' '.join(stderr.split())

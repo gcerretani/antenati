@@ -18,7 +18,7 @@ One invocation resolves one gallery or direct Antenati manifest, builds a determ
 - **Persistent provenance** — each completed run stores the source manifest plus a per-image JSON index with canvas/source mapping, size and hash.
 - **Bounded execution** — image bodies are streamed, in-flight work is bounded and explicit resource ceilings protect against anomalous sources.
 - **Preview mode** — inspect the exact pages, source URLs and output filenames before image files are written.
-- **CLI and GUI** — both use the same core configuration and validation rules.
+- **Modern CLI and GUI** — a Rich terminal experience and Tk desktop interface share the same core configuration, validation and reporting rules.
 - **Cross-platform** — Windows, macOS and Linux, with standalone GUI executables for users who do not want to install Python.
 
 ## Installation and ways to use antenati
@@ -35,7 +35,7 @@ Open the project's [GitHub Releases](https://github.com/gcerretani/antenati/rele
 
 These are standalone applications built by the release workflow: **Python and `pip` are not required**. On macOS/Linux you may need to allow execution according to your operating system's security settings.
 
-The standalone application provides the graphical interface described below. Paste the gallery URL, choose an output directory and start the download.
+The standalone application provides the graphical interface described below. The GUI keeps a fixed **Save in** base directory (the current working directory by default). With **Create a separate folder for each register** enabled, each register gets its own metadata-derived child folder inside that base; the base field never changes to the previous register path.
 
 ### 2. Install from PyPI — recommended for Python/command-line users
 
@@ -100,6 +100,8 @@ Basic use:
 antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
 ```
 
+Running `antenati` with no URL in an interactive terminal starts a guided wizard. The CLI shows a loading spinner while resolving the register, renders portal metadata without embedded HTML, and switches to a live Rich progress display for the image download. In `--debug` mode the animated UI is disabled in favour of a linear diagnostic log.
+
 By default the output directory is derived from the register metadata. Use `--output` to select an exact destination path.
 
 ### Core options
@@ -107,14 +109,16 @@ By default the output directory is derived from the register metadata. Use `--ou
 | Option | Description |
 |---|---|
 | `-s`, `--size N` | Maximum image size in pixels; `0` requests full resolution. |
-| `-n`, `--nthreads N` | Maximum number of image workers. |
+| `-n`, `--workers N` | Maximum number of image workers. Legacy `--nthreads` remains accepted for v6 script compatibility. |
 | `-f`, `--first N` | Zero-based index of the first page to include. |
 | `-l`, `--last N` | Zero-based exclusive end index. |
 | `-d`, `--descriptive-names` | Include archive/image identifiers in filenames. |
 | `-o`, `--output PATH` | Exact output directory. |
 | `--existing {ask,error,overwrite,skip,resume}` | Policy when the output already exists. Default: `ask`. |
 | `--dry-run` | Resolve the source and print the planned pages/filenames without downloading image bodies or creating the output directory. |
+| `--format {text,json}` | Human-readable Rich output (default) or stable machine-readable JSON. |
 | `--verbose` | Increase logging verbosity; repeat for DEBUG. |
+| `--debug` | Enable diagnostic logging and full tracebacks; animated terminal progress is disabled for readable logs. |
 | `-v`, `--version` | Print the version and exit. |
 
 Run `antenati -h` for the authoritative option list.
@@ -127,7 +131,19 @@ Run `antenati -h` for the authoritative option list.
 - `resume` — verify indexed existing files and redownload only missing, stale, mismatched or corrupt pages.
 - `skip` — reuse only files that can be verified from the provenance index; ambiguous unverified files are never silently accepted.
 
-For scripts and unattended runs, select an explicit non-interactive policy instead of `ask`, for example `--existing resume` or `--existing error`.
+For scripts and unattended runs, select an explicit non-interactive policy instead of `ask`, for example `--existing resume` or `--existing error`. This is required in `--format json` mode whenever the destination is already non-empty, because JSON mode never opens an interactive prompt.
+
+### Machine-readable JSON
+
+Use `--format json` when another program needs a stable structured result:
+
+```text
+antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x --existing resume --format json
+```
+
+JSON mode writes **only JSON to stdout**: no Rich panels, spinner or progress bar. Logging and operational diagnostics remain on stderr. The payload is versioned with `schema_version` and includes the resolved source/manifest, cleaned register metadata, output directory, effective options and the final `DownloadReport` fields (`expected`, `attempted`, `completed`, `skipped`, failures, cancellation state, remaining work and exact bytes written).
+
+`--dry-run --format json` returns the resolved plan instead, including each planned filename, canvas ID and IIIF source URL, without creating the output directory or downloading image bodies.
 
 The same source canvas receives the same planned filename regardless of the selected subset, worker count or completion order. For example, a 150-page gallery uses names such as `pag-001.jpg`; downloading only pages 7–12 still produces the corresponding zero-padded names from the complete gallery.
 
@@ -191,7 +207,7 @@ antenati-gui
 
 ![GUI Screenshot](https://raw.githubusercontent.com/gcerretani/antenati/master/docs/gui_screenshot.png)
 
-Paste a gallery/manifest URL, choose the **exact destination directory**, then select the page range, image size, thread count, descriptive-name option and existing-output policy. The default `ask` policy prompts when the destination already contains files and recommends verified resume. The GUI runs the same downloader configuration, validation and result model as the CLI.
+Paste a gallery/manifest URL, then select the page range, image size, worker count, descriptive-name option and existing-output policy. The **Destination** section separates the fixed **Save in** base path from the generated register folder. By default, **Create a separate folder for each register (recommended)** is enabled: after metadata loads, the GUI shows only the generated register-folder name while keeping the base path unchanged. Use **Change…** to choose another base directory, or clear the checkbox to save directly into that selected folder. Successful downloads show the full final path and enable **Open folder**. While the manifest and page plan are being resolved the GUI shows an indeterminate loading animation and live phase text; once the page count is known it automatically switches to determinate download progress. The default `ask` policy prompts when the destination already contains files and recommends verified resume. The GUI runs the same downloader configuration, validation and result model as the CLI.
 
 ## AWS WAF and live-site limitations
 

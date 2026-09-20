@@ -16,17 +16,16 @@ from json import loads
 from os import mkdir, path
 from pathlib import Path
 from re import finditer
-from sys import exit as sys_exit
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from click import confirm, echo
 from requests import RequestException, Response, Session
 from slugify import slugify
 
 from antenati import http, iiif, provenance
 from antenati import image as image_validation
 from antenati.errors import AntenatiError, DownloadFailedError, ResourceLimitError, ThreadError
+from antenati.filesystem import atomic_replace
 from antenati.validation import DownloadOptions, validate_download_options, validate_page_range
 
 logger = logging.getLogger(__name__)
@@ -226,6 +225,7 @@ class Downloader:
         self._ark_id = self._resolve_ark_id(canvases, archive_id)
         self._dirname = self._generate_dirname(manifest, archive_id)
         logger.info('Manifest loaded: %d canvases selected', len(canvases))
+        logger.debug('Resolved archive_id=%s ark_id=%s output=%s', self._archive_id, self._ark_id, self._dirname)
         return self
 
     def plan(self, size: int = DEFAULT_SIZE) -> DownloadPlan:
@@ -249,6 +249,14 @@ class Downloader:
             for canvas, stem in zip(self._canvases, selected_stems, strict=True)
         )
         self._plan = DownloadPlan(items=items, size=size)
+        logger.debug(
+            'Download plan resolved: expected=%d first=%d last=%s size=%d descriptive_names=%s',
+            self._plan.expected,
+            self.first,
+            self.last,
+            size,
+            self.descriptive_names,
+        )
         return self._plan
 
     def _trusted_image_url(self, canvas: dict[str, Any], size: int) -> str:
@@ -324,9 +332,10 @@ class Downloader:
             msg = f'Directory {self.dirname} already exists.'
             if not interactive:
                 raise RuntimeError(msg)
-            echo(msg)
-            if not confirm('Do you want to proceed?'):
-                sys_exit(1)
+            print(msg)
+            answer = input('Do you want to proceed? [y/N]: ').strip().lower()
+            if answer not in {'y', 'yes'}:
+                raise SystemExit(1)
         else:
             mkdir(self.dirname)
 
@@ -346,7 +355,7 @@ class Downloader:
             return record
         if target.exists():
             raise RuntimeError(f'Refusing to rename verified file {current} to {target}: target already exists')
-        os.replace(current, target)
+        atomic_replace(current, target)
         return replace(record, filename=target.name)
 
     @staticmethod
@@ -400,7 +409,7 @@ class Downloader:
             image_validation.validate_image_file(content_type, Path(temp_name))
             if cancel is not None and cancel.is_set():
                 raise CancelledError
-            os.replace(temp_name, filename)
+            atomic_replace(temp_name, filename)
             temp_name = None
             return provenance.ImageRecord.create(
                 canvas_id=str(item.canvas.get('@id', '')),
@@ -416,7 +425,7 @@ class Downloader:
             raise
         except (RequestException, AntenatiError, OSError, RuntimeError, ValueError) as ex:
             budget.release(consumed)
-            logger.warning('Image %s failed: %s', label, ex)
+            logger.debug('Image %s failed: %s', label, ex, exc_info=True)
             raise ThreadError(label) from ex
         finally:
             if reply is not None:
@@ -473,8 +482,20 @@ class Downloader:
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any image work was submitted')
             report = DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
+            logger.debug(
+                'Download finished: expected=%d attempted=%d completed=%d skipped=%d failed=%d cancelled=%s bytes=%d',
+                report.expected,
+                report.attempted,
+                report.completed,
+                report.skipped,
+                len(report.failed),
+                report.cancelled,
+                report.bytes_written,
+            )
             return self._return_report(report, strict=strict)
         verified = provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
+        if resume:
+            logger.debug('Resume verification found %d reusable records', len(verified))
         plan_keys = {self._resume_key(item) for item in plan.items}
         records: list[provenance.ImageRecord] = provenance.carry_over_records(
             self.dirname, manifest_url=self.manifest_url, requested_size=size, exclude_keys=plan_keys
@@ -489,6 +510,7 @@ class Downloader:
                 records.append(self._reconcile_verified_filename(item, existing))
                 skipped += 1
                 progress.update()
+        logger.debug('Download execution split: pending=%d skipped=%d', len(pending), skipped)
         attempted = 0
         completed = 0
         bytes_written = 0
@@ -528,6 +550,7 @@ class Downloader:
                         records.append(record)
                 if not cancelled:
                     self._fill_futures(executor, item_iter, in_flight, in_flight_limit, submit)
+        logger.debug('Persisting provenance with %d records', len(records))
         self._persist_provenance(size, records)
         report = DownloadReport(
             expected=plan.expected,
@@ -537,5 +560,15 @@ class Downloader:
             failed=tuple(failures),
             cancelled=cancelled,
             bytes_written=bytes_written,
+        )
+        logger.debug(
+            'Download finished: expected=%d attempted=%d completed=%d skipped=%d failed=%d cancelled=%s bytes=%d',
+            report.expected,
+            report.attempted,
+            report.completed,
+            report.skipped,
+            len(report.failed),
+            report.cancelled,
+            report.bytes_written,
         )
         return self._return_report(report, strict=strict)
