@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from antenati import __version__
+from antenati import cli as antenati_cli
 from antenati.cli import app
 
 runner = CliRunner()
@@ -63,3 +66,47 @@ def test_legacy_flags_are_accepted_by_typer_parser() -> None:
     assert result.exit_code != 0
     assert 'No such option' not in result.output
     assert 'JSON output is scaffolded' in result.output
+
+
+def test_no_url_fails_without_prompt_outside_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(antenati_cli, '_is_interactive_terminal', lambda: False)
+    result = runner.invoke(app, [])
+    assert result.exit_code != 0
+    assert 'Missing argument URL' in result.output
+
+
+def test_interactive_wizard_builds_default_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FakeDownloader:
+        def __init__(self, url: str, first: int, last: int | None, descriptive_names: bool = False):
+            self.url = url
+            self.first = first
+            self.last = last
+            self.descriptive_names = descriptive_names
+            self.gallery_length = 15
+            self.dirname = Path('generated-register')
+
+        def load(self):
+            return self
+
+        def print_gallery_info(self) -> None:
+            return None
+
+    answers = iter([
+        'https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/test',
+        'all',
+        'full',
+        str(tmp_path / 'download'),
+    ])
+    monkeypatch.setattr(antenati_cli, '_is_interactive_terminal', lambda: True)
+    monkeypatch.setattr(antenati_cli, 'Downloader', FakeDownloader)
+    monkeypatch.setattr(antenati_cli.typer, 'prompt', lambda *_args, **_kwargs: next(answers))
+    monkeypatch.setattr(antenati_cli.typer, 'confirm', lambda *_args, **_kwargs: True)
+
+    config, downloader = antenati_cli._run_wizard()
+
+    assert config.url.endswith('/test')
+    assert config.first == 0
+    assert config.last is None
+    assert config.size == 0
+    assert config.output_dir == str(tmp_path / 'download')
+    assert downloader.url == config.url
