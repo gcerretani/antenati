@@ -110,3 +110,19 @@ def test_interactive_wizard_builds_default_config(monkeypatch: pytest.MonkeyPatc
     assert config.size == 0
     assert config.output_dir == str(tmp_path / 'download')
     assert downloader.url == config.url
+
+
+def test_operational_error_is_concise_without_debug(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailingDownloader:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def load(self):
+            raise PermissionError('locked destination')
+
+    monkeypatch.setattr(antenati_cli, 'Downloader', FailingDownloader)
+    result = runner.invoke(app, ['https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/test'])
+
+    assert result.exit_code == 1
+    assert 'Error: locked destination' in result.output
+    assert 'Traceback' not in result.output
