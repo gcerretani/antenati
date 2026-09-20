@@ -25,7 +25,7 @@ ARCHIVE_ID = '19944535'
 
 # The HTML fixture embeds this exact manifest URL inside a ``manifestId``
 # JavaScript assignment.
-MANIFEST_URL = 'https://iiif.example.org/ark/12657/iiif-19944535/manifest'
+MANIFEST_URL = 'https://dam-antenati.cultura.gov.it/antenati/containers/test/manifest'
 
 # Tests don't decode the downloaded payload; any byte sequence is fine.
 TINY_JPEG = b'\xff\xd8\xff\xd9'  # SOI + EOI (smallest "valid" JPEG)
