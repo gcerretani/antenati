@@ -25,7 +25,7 @@ def _null_progress() -> ProgressBar:
 def test_gallery_html_canary() -> None:
     session = http.build_session()
     try:
-        reply = http.fetch(session, LIVE_GALLERY_URL)
+        reply = http.fetch(session, LIVE_GALLERY_URL, role=http.UrlRole.GALLERY)
         charset = http.get_content_charset(reply) or 'utf-8'
         manifest_url = iiif.parse_manifest_url_from_html(reply.content.decode(charset), LIVE_GALLERY_URL)
     except Exception as exc:
