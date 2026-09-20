@@ -135,12 +135,14 @@ def fetch(session: Session, url: str, *, role: UrlRole, stream: bool = False) ->
                 if redirect_count >= MAX_REDIRECTS:
                     raise TooManyRedirects(f'Exceeded {MAX_REDIRECTS} redirects for {url}')
                 target_url = urljoin(current_url, location.strip())
+                logger.debug('Redirect %s -> %s', current_url, target_url)
                 validate_url(target_url, role)
                 reply.close()
                 current_url = target_url
                 continue
 
             reply.raise_for_status()
+            logger.debug('HTTP %s %s content-type=%s', reply.status_code, reply.url, reply.headers.get('Content-Type'))
             if reply.status_code == WAF_CHALLENGE_STATUS and reply.headers.get(WAF_CHALLENGE_HEADER) == WAF_CHALLENGE_VALUE:
                 logger.warning('WAF challenge received from %s', reply.url)
                 raise WafChallengeError(
