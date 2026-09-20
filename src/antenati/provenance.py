@@ -15,6 +15,8 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from antenati.filesystem import atomic_replace
+
 MANIFEST_FILENAME = '.antenati-manifest.json'
 INDEX_FILENAME = '.antenati-index.json'
 INDEX_SCHEMA_VERSION = 1
@@ -109,7 +111,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
             tmp.write(text)
             tmp.flush()
             os.fsync(tmp.fileno())
-        os.replace(temp_name, path)
+        atomic_replace(temp_name, path)
         temp_name = None
     finally:
         if temp_name is not None:
