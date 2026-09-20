@@ -23,12 +23,12 @@ def test_fetch_returns_response_on_2xx() -> None:
     with responses.RequestsMock() as rsps:
         rsps.add(
             responses.GET,
-            'https://example.org/ok',
+            'https://antenati.cultura.gov.it/ok',
             body='hi',
             status=200,
             content_type='text/plain',
         )
-        reply = antenati_http.fetch(session, 'https://example.org/ok')
+        reply = antenati_http.fetch(session, 'https://antenati.cultura.gov.it/ok', role=antenati_http.UrlRole.GALLERY)
     assert reply.text == 'hi'
 
 
@@ -37,13 +37,13 @@ def test_fetch_raises_on_http_error() -> None:
     with responses.RequestsMock() as rsps:
         rsps.add(
             responses.GET,
-            'https://example.org/boom',
+            'https://antenati.cultura.gov.it/boom',
             body='nope',
             status=500,
             content_type='text/plain',
         )
         with pytest.raises(Exception):  # noqa: B017 - requests.HTTPError subclass
-            antenati_http.fetch(session, 'https://example.org/boom')
+            antenati_http.fetch(session, 'https://antenati.cultura.gov.it/boom', role=antenati_http.UrlRole.GALLERY)
 
 
 def test_fetch_closes_response_on_http_error() -> None:
@@ -51,13 +51,13 @@ def test_fetch_closes_response_on_http_error() -> None:
     with responses.RequestsMock() as rsps:
         rsps.add(
             responses.GET,
-            'https://example.org/boom-stream',
+            'https://antenati.cultura.gov.it/boom-stream',
             body='nope',
             status=500,
             content_type='text/plain',
         )
         with patch.object(Response, 'close', autospec=True) as mock_close, pytest.raises(Exception):  # noqa: B017
-            antenati_http.fetch(session, 'https://example.org/boom-stream', stream=True)
+            antenati_http.fetch(session, 'https://antenati.cultura.gov.it/boom-stream', role=antenati_http.UrlRole.GALLERY, stream=True)
     assert mock_close.called
 
 
@@ -66,14 +66,14 @@ def test_fetch_raises_on_waf_challenge() -> None:
     with responses.RequestsMock() as rsps:
         rsps.add(
             responses.GET,
-            'https://example.org/challenge',
+            'https://antenati.cultura.gov.it/challenge',
             body='challenge',
             status=antenati_http.WAF_CHALLENGE_STATUS,
             headers={antenati_http.WAF_CHALLENGE_HEADER: antenati_http.WAF_CHALLENGE_VALUE},
             content_type='text/html; charset=utf-8',
         )
         with pytest.raises(WafChallengeError, match='AWS WAF challenge'):
-            antenati_http.fetch(session, 'https://example.org/challenge')
+            antenati_http.fetch(session, 'https://antenati.cultura.gov.it/challenge', role=antenati_http.UrlRole.GALLERY)
 
 
 def test_fetch_retries_on_503_then_succeeds() -> None:
@@ -83,33 +83,33 @@ def test_fetch_retries_on_503_then_succeeds() -> None:
         # transient failures followed by a success.
         rsps.add(
             responses.GET,
-            'https://example.org/flaky',
+            'https://antenati.cultura.gov.it/flaky',
             body='oops',
             status=503,
             content_type='text/plain',
         )
         rsps.add(
             responses.GET,
-            'https://example.org/flaky',
+            'https://antenati.cultura.gov.it/flaky',
             body='oops',
             status=503,
             content_type='text/plain',
         )
         rsps.add(
             responses.GET,
-            'https://example.org/flaky',
+            'https://antenati.cultura.gov.it/flaky',
             body='ok',
             status=200,
             content_type='text/plain',
         )
-        reply = antenati_http.fetch(session, 'https://example.org/flaky')
+        reply = antenati_http.fetch(session, 'https://antenati.cultura.gov.it/flaky', role=antenati_http.UrlRole.GALLERY)
     assert reply.status_code == 200
     assert reply.text == 'ok'
 
 
 def test_session_mounts_retrying_adapter() -> None:
     session = antenati_http.build_session()
-    adapter = session.get_adapter('https://example.org/')
+    adapter = session.get_adapter('https://antenati.cultura.gov.it/')
     retry = adapter.max_retries
     assert retry.total == antenati_http.RETRY_TOTAL
     assert set(retry.status_forcelist) == set(antenati_http.RETRYABLE_STATUSES)
@@ -120,10 +120,10 @@ def test_fetch_does_not_treat_plain_202_as_waf() -> None:
     with responses.RequestsMock() as rsps:
         rsps.add(
             responses.GET,
-            'https://example.org/accepted',
+            'https://antenati.cultura.gov.it/accepted',
             body='queued',
             status=202,
             content_type='text/plain',
         )
-        reply = antenati_http.fetch(session, 'https://example.org/accepted')
+        reply = antenati_http.fetch(session, 'https://antenati.cultura.gov.it/accepted', role=antenati_http.UrlRole.GALLERY)
     assert reply.status_code == 202
