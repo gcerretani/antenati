@@ -150,13 +150,39 @@ def image_url_for_canvas(canvas: dict[str, Any]) -> str:
 def manipulate_image_url(url: str, size: int) -> str:
     """Rewrite the size component of a IIIF Image API request URL.
 
-    Do not rely on a literal ``/full/full/0/`` substring: valid source URLs
-    may use other size tokens such as ``max``. For the Antenati Image API URL
-    shapes supported here, the size component is the third segment from the
-    end, immediately before rotation and ``quality.format``.
+    The Antenati IIIF backend is Cantaloupe (confirmed via the
+    ``X-Powered-By`` header on iiif-antenati.cultura.gov.it), fronted by a
+    WAF that returns HTTP 403 for any request whose size component is the
+    literal string ``full`` (historically ``max`` too) -- an
+    anti-bulk-download filter, unrelated to the Image API or to Cantaloupe
+    itself.
 
-    ``size > 0`` requests a bounding box via ``!N,N``; ``size == 0`` keeps
-    the historical full-resolution behavior by requesting ``pct:100``.
+    Requesting the same resolution via ``pct:100`` avoids that literal
+    string, and it also happens to sidestep a second, independent limit:
+    Cantaloupe's own ``MAX_PIXELS`` cap (published as ``maxArea`` in
+    ``info.json``; observed at ~10,000,000 px, below the native area of
+    every canvas sampled so far, e.g. 2908x3972 = 11.5M px). Cantaloupe
+    skips that cap entirely when a request resolves to a no-op (same
+    size/format/quality as the source) -- confirmed against Cantaloupe
+    5.0.2's own source (``OperationList.validate``/``hasEffect``) -- which is
+    exactly what ``pct:100`` becomes once it matches the native size. Any
+    request that isn't a no-op at native resolution (different quality,
+    rotation, or output format) is rejected with the same 403 once it
+    crosses that cap, no matter how it is phrased.
+
+    Both restrictions are server-side policy, not protocol limitations, and
+    either could tighten independently with no equivalent single-request
+    workaround (e.g. a stricter WAF rule, or a Cantaloupe delegate-script
+    ``authorize()`` hook forcing a scaled-down redirect) -- see
+    CHANGELOG.md for how often the server side of this has already changed.
+
+    Do not rely on a literal ``/full/full/0/`` substring: valid source URLs
+    may use other size tokens. For the Antenati Image API URL shapes
+    supported here, the size component is the third segment from the end,
+    immediately before rotation and ``quality.format``.
+
+    ``size > 0`` requests a bounding box via ``!N,N``; ``size == 0`` requests
+    the source resolution via ``pct:100``.
     """
     parsed = urlsplit(url)
     parts = parsed.path.split('/')
