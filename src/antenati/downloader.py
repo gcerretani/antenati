@@ -415,7 +415,7 @@ class Downloader:
             raise
         except (RequestException, AntenatiError, OSError, RuntimeError, ValueError) as ex:
             budget.release(consumed)
-            logger.warning('Image %s failed: %s', label, ex)
+            logger.debug('Image %s failed: %s', label, ex, exc_info=True)
             raise ThreadError(label) from ex
         finally:
             if reply is not None:
