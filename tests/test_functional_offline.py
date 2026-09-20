@@ -124,7 +124,7 @@ def test_cli_default_ask_can_resume_existing_download(
     first_code, _, first_stderr = _invoke_cli(monkeypatch, capsys, MANIFEST_URL, '--output', str(output), '--existing', 'overwrite')
     assert first_code == 0, first_stderr
     image_calls_before = _image_request_count(mocked_http)
-    monkeypatch.setattr(antenati_cli.click, 'prompt', lambda *_args, **_kwargs: 'resume')
+    monkeypatch.setattr(antenati_cli.typer, 'prompt', lambda *_args, **_kwargs: 'resume')
 
     resumed_code, resumed_stdout, resumed_stderr = _invoke_cli(monkeypatch, capsys, MANIFEST_URL, '--output', str(output))
 
