@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README now documents standalone GitHub Release executables as the recommended path for non-Python users, alongside PyPI and source/development installation, and describes the actual single-gallery/register scope and integrity guarantees (#68)
 - GUI progress now distinguishes manifest/planning phases with an indeterminate animation before switching to determinate per-page progress (#79)
 - The GUI destination model now separates a fixed absolute base directory from the metadata-derived register folder: automatic per-register subfolders never replace the base path, preventing confusing apparent nesting between consecutive downloads; direct-to-folder mode and Open folder remain available (#79)
+- GUI status text and register-folder display are width-stable: long destination paths no longer resize the application window between downloads (#79)
 
 ### Fixed
 - Reject unsupported media types, HTML/text responses, corrupt image data and MIME/signature mismatches before a final image file is committed (#47)

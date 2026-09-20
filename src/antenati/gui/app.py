@@ -62,7 +62,7 @@ class App:
         self._descriptive = tk.BooleanVar(value=False)
         self._base_path = tk.StringVar(value=str(Path.cwd().resolve()))
         self._automatic_output = tk.BooleanVar(value=True)
-        self._destination_note = tk.StringVar(value='Register folder: will be determined from metadata')
+        self._register_folder = tk.StringVar(value='Will be determined from metadata')
         self._resolved_output: Path | None = None
         self._existing = tk.StringVar(value=ExistingPolicy.ASK.value)
 
@@ -411,13 +411,25 @@ class App:
         )
         ttk.Label(
             destination,
-            textvariable=self._destination_note,
+            text='Register folder',
+        ).grid(
+            row=2,
+            column=0,
+            padx=(0, 10),
+            pady=(2, 4),
+            sticky=tk.W,
+        )
+        ttk.Entry(
+            destination,
+            textvariable=self._register_folder,
+            state='readonly',
+            width=48,
         ).grid(
             row=2,
             column=1,
             columnspan=2,
-            pady=(0, 4),
-            sticky=tk.W,
+            pady=(2, 4),
+            sticky=tk.EW,
         )
 
         actions = ttk.Frame(entry_frame)
@@ -522,9 +534,9 @@ class App:
         self._resolved_output = None
         self._open_folder_button.configure(state=tk.DISABLED)
         if self._automatic_output.get():
-            self._destination_note.set('Register folder: will be determined from metadata')
+            self._register_folder.set('Will be determined from metadata')
         else:
-            self._destination_note.set('Files will be saved directly in this folder')
+            self._register_folder.set('(same as Save in)')
 
     def _open_output_folder(self) -> None:
         directory = self._resolved_output
@@ -570,7 +582,7 @@ class App:
         automatic_output = bool(self._automatic_output.get())
         self._resolved_output = None
         self._open_folder_button.configure(state=tk.DISABLED)
-        self._destination_note.set('Resolving register folder…' if automatic_output else 'Files will be saved directly in this folder')
+        self._register_folder.set('Resolving…' if automatic_output else '(same as Save in)')
 
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
@@ -620,9 +632,9 @@ class App:
         if isinstance(event, Destination):
             self._resolved_output = Path(event.path)
             if self._automatic_output.get():
-                self._destination_note.set(f'Register folder: {self._resolved_output.name}')
+                self._register_folder.set(self._resolved_output.name)
             else:
-                self._destination_note.set('Files will be saved directly in this folder')
+                self._register_folder.set('(same as Save in)')
         elif isinstance(event, ExistingOutput):
             policy = self._resolve_gui_policy(event.path, ExistingPolicy.ASK)
             if policy is None:
@@ -648,14 +660,14 @@ class App:
             report = event.report
             output = str(self._resolved_output) if self._resolved_output is not None else self._base_path.get()
             if report.successful:
-                self._footer_label.configure(text=f'Download complete · {output}')
+                self._footer_label.configure(text='Download complete')
                 self._open_folder_button.configure(state=tk.NORMAL)
                 tkmsg.showinfo(
                     'Download complete',
                     f'Downloaded {report.completed}, reused {report.skipped}. New data: {format_bytes(report.bytes_written)}\n\nSaved to:\n{output}',
                 )
             else:
-                self._footer_label.configure(text=f'Download incomplete · {output}')
+                self._footer_label.configure(text='Download incomplete')
                 if self._resolved_output is not None and self._resolved_output.is_dir():
                     self._open_folder_button.configure(state=tk.NORMAL)
                 details = '\n'.join(f'{failure.label}: {failure.reason}' for failure in report.failed)
@@ -667,7 +679,7 @@ class App:
             self._terminal_received = True
             self._set_running(False)
             output = str(self._resolved_output) if self._resolved_output is not None else self._base_path.get()
-            self._footer_label.configure(text=f'Download cancelled · {output}')
+            self._footer_label.configure(text='Download cancelled')
             if self._resolved_output is not None and self._resolved_output.is_dir():
                 self._open_folder_button.configure(state=tk.NORMAL)
             tkmsg.showinfo(
