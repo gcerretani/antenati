@@ -475,8 +475,17 @@ class Downloader:
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any image work was submitted')
             report = DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
-            logger.debug('Download finished: expected=%d attempted=%d completed=%d skipped=%d failed=%d cancelled=%s bytes=%d', report.expected, report.attempted, report.completed, report.skipped, len(report.failed), report.cancelled, report.bytes_written)
-        return self._return_report(report, strict=strict)
+            logger.debug(
+                'Download finished: expected=%d attempted=%d completed=%d skipped=%d failed=%d cancelled=%s bytes=%d',
+                report.expected,
+                report.attempted,
+                report.completed,
+                report.skipped,
+                len(report.failed),
+                report.cancelled,
+                report.bytes_written,
+            )
+            return self._return_report(report, strict=strict)
         verified = provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
         if resume:
             logger.debug('Resume verification found %d reusable records', len(verified))
@@ -544,5 +553,15 @@ class Downloader:
             failed=tuple(failures),
             cancelled=cancelled,
             bytes_written=bytes_written,
+        )
+        logger.debug(
+            'Download finished: expected=%d attempted=%d completed=%d skipped=%d failed=%d cancelled=%s bytes=%d',
+            report.expected,
+            report.attempted,
+            report.completed,
+            report.skipped,
+            len(report.failed),
+            report.cancelled,
+            report.bytes_written,
         )
         return self._return_report(report, strict=strict)
