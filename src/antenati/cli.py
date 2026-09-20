@@ -17,6 +17,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from antenati import __copyright__, __version__
 from antenati.config import DownloadConfig
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, DownloadItem, DownloadReport, ProgressBar
+from antenati.formatting import format_bytes
 from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
 
 
@@ -111,20 +112,10 @@ def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, polic
     return ExistingPolicy(selected)
 
 
-def _format_bytes(value: int) -> str:
-    amount = float(value)
-    units = ('B', 'KiB', 'MiB', 'GiB', 'TiB')
-    for unit in units:
-        if amount < 1024 or unit == units[-1]:
-            return f'{amount:.0f} {unit}' if unit == 'B' else f'{amount:.1f} {unit}'
-        amount /= 1024
-    raise AssertionError('unreachable')
-
-
 def _print_report(report: DownloadReport) -> None:
     print(
         f'Completed: {report.completed}/{report.expected}; skipped: {report.skipped}; '
-        f'failed: {len(report.failed)}; bytes written: {_format_bytes(report.bytes_written)}'
+        f'failed: {len(report.failed)}; bytes written: {format_bytes(report.bytes_written)}'
     )
     for failure in report.failed:
         print(f' - {failure.label}: {failure.reason}')
