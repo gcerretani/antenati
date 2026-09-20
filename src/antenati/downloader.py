@@ -225,6 +225,7 @@ class Downloader:
         self._ark_id = self._resolve_ark_id(canvases, archive_id)
         self._dirname = self._generate_dirname(manifest, archive_id)
         logger.info('Manifest loaded: %d canvases selected', len(canvases))
+        logger.debug('Resolved archive_id=%s ark_id=%s output=%s', self._archive_id, self._ark_id, self._dirname)
         return self
 
     def plan(self, size: int = DEFAULT_SIZE) -> DownloadPlan:
@@ -248,6 +249,7 @@ class Downloader:
             for canvas, stem in zip(self._canvases, selected_stems, strict=True)
         )
         self._plan = DownloadPlan(items=items, size=size)
+        logger.debug('Download plan resolved: expected=%d first=%d last=%s size=%d descriptive_names=%s', self._plan.expected, self.first, self.last, size, self.descriptive_names)
         return self._plan
 
     def _trusted_image_url(self, canvas: dict[str, Any], size: int) -> str:
@@ -473,8 +475,11 @@ class Downloader:
         if cancel is not None and cancel.is_set():
             logger.info('Download cancelled before any image work was submitted')
             report = DownloadReport(plan.expected, 0, 0, 0, (), True, 0)
-            return self._return_report(report, strict=strict)
+            logger.debug('Download finished: expected=%d attempted=%d completed=%d skipped=%d failed=%d cancelled=%s bytes=%d', report.expected, report.attempted, report.completed, report.skipped, len(report.failed), report.cancelled, report.bytes_written)
+        return self._return_report(report, strict=strict)
         verified = provenance.verified_resume_records(self.dirname, manifest_url=self.manifest_url, requested_size=size) if resume else {}
+        if resume:
+            logger.debug('Resume verification found %d reusable records', len(verified))
         plan_keys = {self._resume_key(item) for item in plan.items}
         records: list[provenance.ImageRecord] = provenance.carry_over_records(
             self.dirname, manifest_url=self.manifest_url, requested_size=size, exclude_keys=plan_keys
@@ -489,6 +494,7 @@ class Downloader:
                 records.append(self._reconcile_verified_filename(item, existing))
                 skipped += 1
                 progress.update()
+        logger.debug('Download execution split: pending=%d skipped=%d', len(pending), skipped)
         attempted = 0
         completed = 0
         bytes_written = 0
@@ -528,6 +534,7 @@ class Downloader:
                         records.append(record)
                 if not cancelled:
                     self._fill_futures(executor, item_iter, in_flight, in_flight_limit, submit)
+        logger.debug('Persisting provenance with %d records', len(records))
         self._persist_provenance(size, records)
         report = DownloadReport(
             expected=plan.expected,
