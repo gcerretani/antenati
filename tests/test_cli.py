@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
@@ -126,3 +127,78 @@ def test_operational_error_is_concise_without_debug(monkeypatch: pytest.MonkeyPa
     assert result.exit_code == 1
     assert 'Error: locked destination' in result.output
     assert 'Traceback' not in result.output
+
+
+def test_debug_logging_keeps_third_party_http_quiet() -> None:
+    antenati_logger = logging.getLogger('antenati')
+    urllib3_logger = logging.getLogger('urllib3')
+    old_antenati_level = antenati_logger.level
+    old_urllib3_level = urllib3_logger.level
+    try:
+        antenati_cli._configure_logging(verbosity=0, debug=True)
+        assert antenati_logger.level == logging.DEBUG
+        assert urllib3_logger.level == logging.WARNING
+    finally:
+        antenati_logger.setLevel(old_antenati_level)
+        urllib3_logger.setLevel(old_urllib3_level)
+
+
+def test_run_cli_without_progress_does_not_create_rich_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    sentinel = object()
+
+    def fail_progress(*_args, **_kwargs):
+        pytest.fail('Rich progress should not be created when show_progress=False')
+
+    def fake_run_with_policy(_downloader, *, n_workers, size, progress, policy):
+        assert n_workers == 2
+        assert size == 0
+        assert policy is ExistingPolicy.OVERWRITE
+        progress.set_total(15)
+        progress.update()
+        return sentinel
+
+    monkeypatch.setattr(antenati_cli, 'Progress', fail_progress)
+    monkeypatch.setattr(antenati_cli, 'run_with_policy', fake_run_with_policy)
+
+    result = antenati_cli.run_cli(object(), n_workers=2, size=0, show_progress=False)
+
+    assert result is sentinel
+
+
+def test_run_cli_starts_progress_only_after_total_is_known(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[object] = []
+    sentinel = object()
+
+    class FakeProgress:
+        def __init__(self, *_args, **_kwargs):
+            events.append('init')
+
+        def start(self) -> None:
+            events.append('start')
+
+        def add_task(self, _description: str, *, total: int):
+            events.append(('add', total))
+            return 1
+
+        def update(self, _task_id: int, *, total: int) -> None:
+            events.append(('set-total', total))
+
+        def advance(self, _task_id: int) -> None:
+            events.append('advance')
+
+        def stop(self) -> None:
+            events.append('stop')
+
+    def fake_run_with_policy(_downloader, *, n_workers, size, progress, policy):
+        assert events == ['init']
+        progress.set_total(15)
+        progress.update()
+        return sentinel
+
+    monkeypatch.setattr(antenati_cli, 'Progress', FakeProgress)
+    monkeypatch.setattr(antenati_cli, 'run_with_policy', fake_run_with_policy)
+
+    result = antenati_cli.run_cli(object(), n_workers=2, size=0)
+
+    assert result is sentinel
+    assert events == ['init', 'start', ('add', 15), 'advance', 'stop']
