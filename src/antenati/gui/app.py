@@ -13,10 +13,9 @@ import tkinter.ttk as ttk
 from pathlib import Path
 from webbrowser import open as webopen
 
-from humanize import naturalsize
-
 from antenati import __contact__, __copyright__, __version__
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE
+from antenati.formatting import format_bytes
 from antenati.gui.progress import TkProgress
 from antenati.gui.worker import (
     Cancelled,
@@ -328,7 +327,7 @@ class App:
             if report.successful:
                 tkmsg.showinfo(
                     'Success',
-                    f'Completed {report.completed}, skipped {report.skipped}. New data: {naturalsize(report.bytes_written, True)}',
+                    f'Completed {report.completed}, skipped {report.skipped}. New data: {format_bytes(report.bytes_written)}',
                 )
             else:
                 details = '\n'.join(f'{f.label}: {f.reason}' for f in report.failed)
