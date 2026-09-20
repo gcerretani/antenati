@@ -18,13 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class Phase:
+    message: str
+
+
+@dataclass(frozen=True)
 class Progress:
     total: int
 
 
 @dataclass(frozen=True)
 class Tick:
-    pass
+    completed: int
 
 
 @dataclass(frozen=True)
@@ -42,7 +47,7 @@ class Failed:
     message: str
 
 
-WorkerEvent = Progress | Tick | Done | Cancelled | Failed
+WorkerEvent = Phase | Progress | Tick | Done | Cancelled | Failed
 
 
 @dataclass
@@ -88,13 +93,25 @@ class DownloadWorker:
     def _run(self, params: DownloadParams) -> None:
         try:
             params.validate(require_output=True)
+            self.events.put(Phase('Loading register metadata…'))
             downloader = self._factory(params.url, params.first, params.last, params.descriptive_names)
             downloader.load()
+
+            self.events.put(Phase('Preparing output…'))
             prepare_output(downloader, params.output_dir, params.existing_policy)
+
+            completed = 0
+
+            def tick() -> None:
+                nonlocal completed
+                completed += 1
+                self.events.put(Tick(completed=completed))
+
             progress = ProgressBar(
                 set_total=lambda total: self.events.put(Progress(total=total)),
-                update=lambda: self.events.put(Tick()),
+                update=tick,
             )
+            self.events.put(Phase('Planning download…'))
             report = run_with_policy(
                 downloader,
                 n_workers=params.n_workers,

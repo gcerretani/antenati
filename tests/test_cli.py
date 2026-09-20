@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from antenati import __version__
 from antenati import cli as antenati_cli
 from antenati.cli import app
+from antenati.output import ExistingPolicy
 
 runner = CliRunner()
 _ANSI_RE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
@@ -62,8 +63,6 @@ def test_legacy_flags_are_accepted_by_typer_parser() -> None:
             'json',
         ],
     )
-    # JSON rendering is deliberately not implemented in this preliminary PR.
-    # Reaching that error proves Typer accepted the legacy and modern spellings.
     assert result.exit_code != 0
     assert 'No such option' not in result.output
     assert 'JSON output is scaffolded' in result.output
@@ -73,7 +72,8 @@ def test_no_url_fails_without_prompt_outside_tty(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(antenati_cli, '_is_interactive_terminal', lambda: False)
     result = runner.invoke(app, [])
     assert result.exit_code != 0
-    assert 'Missing argument URL' in result.output
+    output = _ANSI_RE.sub('', result.output)
+    assert 'URL is required outside an interactive terminal' in output
 
 
 def test_interactive_wizard_builds_default_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -85,31 +85,34 @@ def test_interactive_wizard_builds_default_config(monkeypatch: pytest.MonkeyPatc
             self.descriptive_names = descriptive_names
             self.gallery_length = 15
             self.dirname = Path('generated-register')
+            self.manifest = {'metadata': []}
 
         def load(self):
             return self
 
-        def print_gallery_info(self) -> None:
-            return None
-
-    answers = iter([
-        'https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/test',
-        'all',
-        'full',
-        str(tmp_path / 'download'),
-    ])
+    answers = iter(
+        [
+            'https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/test',
+            'all',
+            'full',
+            str(tmp_path / 'download'),
+        ]
+    )
     monkeypatch.setattr(antenati_cli, '_is_interactive_terminal', lambda: True)
     monkeypatch.setattr(antenati_cli, 'Downloader', FakeDownloader)
     monkeypatch.setattr(antenati_cli.typer, 'prompt', lambda *_args, **_kwargs: next(answers))
     monkeypatch.setattr(antenati_cli.typer, 'confirm', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(antenati_cli.cli_ui, 'render_banner', lambda: None)
+    monkeypatch.setattr(antenati_cli.cli_ui, 'render_register', lambda *_args, **_kwargs: None)
 
-    config, downloader = antenati_cli._run_wizard()
+    config, downloader = antenati_cli._run_wizard(show_status=False)
 
     assert config.url.endswith('/test')
     assert config.first == 0
     assert config.last is None
     assert config.size == 0
     assert config.output_dir == str(tmp_path / 'download')
+    assert downloader is not None
     assert downloader.url == config.url
 
 
@@ -125,7 +128,7 @@ def test_operational_error_is_concise_without_debug(monkeypatch: pytest.MonkeyPa
     result = runner.invoke(app, ['https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/test'])
 
     assert result.exit_code == 1
-    assert 'Error: locked destination' in result.output
+    assert 'locked destination' in result.output
     assert 'Traceback' not in result.output
 
 

@@ -4,6 +4,17 @@
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
+
+class _PlainTextHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
 
 def format_bytes(value: int) -> str:
     """Format a byte count using IEC binary units."""
@@ -14,3 +25,11 @@ def format_bytes(value: int) -> str:
             return f'{amount:.0f} {unit}' if unit == 'B' else f'{amount:.1f} {unit}'
         amount /= 1024
     raise AssertionError('unreachable')
+
+
+def plain_text(value: object) -> str:
+    """Return compact readable text from metadata that may contain HTML."""
+    parser = _PlainTextHTMLParser()
+    parser.feed(str(value))
+    parser.close()
+    return ' '.join(''.join(parser.parts).split())

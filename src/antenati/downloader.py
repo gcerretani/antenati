@@ -249,7 +249,14 @@ class Downloader:
             for canvas, stem in zip(self._canvases, selected_stems, strict=True)
         )
         self._plan = DownloadPlan(items=items, size=size)
-        logger.debug('Download plan resolved: expected=%d first=%d last=%s size=%d descriptive_names=%s', self._plan.expected, self.first, self.last, size, self.descriptive_names)
+        logger.debug(
+            'Download plan resolved: expected=%d first=%d last=%s size=%d descriptive_names=%s',
+            self._plan.expected,
+            self.first,
+            self.last,
+            size,
+            self.descriptive_names,
+        )
         return self._plan
 
     def _trusted_image_url(self, canvas: dict[str, Any], size: int) -> str:

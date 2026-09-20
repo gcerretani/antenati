@@ -129,8 +129,9 @@ def test_cli_default_ask_can_resume_existing_download(
     resumed_code, resumed_stdout, resumed_stderr = _invoke_cli(monkeypatch, capsys, MANIFEST_URL, '--output', str(output))
 
     assert resumed_code == 0, resumed_stderr
-    assert 'Choose how to handle existing files' in resumed_stdout
-    assert 'skipped: 3' in resumed_stdout
+    assert 'Existing output' in resumed_stdout
+    assert 'Reused' in resumed_stdout
+    assert '3' in resumed_stdout
     assert _image_request_count(mocked_http) == image_calls_before
 
 
@@ -145,10 +146,16 @@ def test_cli_explicit_error_policy_rejects_existing_output_without_image_request
     first_code, _, first_stderr = _invoke_cli(monkeypatch, capsys, MANIFEST_URL, '--output', str(output), '--existing', 'overwrite')
     assert first_code == 0, first_stderr
     image_calls_before = _image_request_count(mocked_http)
-    monkeypatch.setattr(sys, 'argv', ['antenati', MANIFEST_URL, '--output', str(output), '--existing', 'error'])
+    code, _stdout, stderr = _invoke_cli(
+        monkeypatch,
+        capsys,
+        MANIFEST_URL,
+        '--output',
+        str(output),
+        '--existing',
+        'error',
+    )
 
-    with pytest.raises(RuntimeError, match='already exists and is not empty'):
-        antenati_cli.main()
-
-    capsys.readouterr()
+    assert code == 1
+    assert 'already exists and is not empty' in stderr
     assert _image_request_count(mocked_http) == image_calls_before

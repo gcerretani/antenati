@@ -14,13 +14,12 @@ from urllib.parse import urlsplit
 
 import typer
 from requests import RequestException
-from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 
-from antenati import __copyright__, __version__
+from antenati import __copyright__, __version__, cli_ui
 from antenati.config import DownloadConfig
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, DownloadItem, DownloadReport, ProgressBar
 from antenati.errors import AntenatiError
-from antenati.formatting import format_bytes
 from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
 
 
@@ -47,8 +46,6 @@ def _configure_logging(verbosity: int, debug: bool = False) -> None:
     elif verbosity >= 1:
         level = logging.INFO
 
-    # Keep third-party libraries quiet even in debug mode: our own HTTP layer
-    # already logs requests, redirects and responses with the useful context.
     logging.basicConfig(level=logging.WARNING, format='%(levelname)s %(name)s: %(message)s')
     logging.getLogger('antenati').setLevel(level)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
@@ -73,10 +70,13 @@ def run_cli(
         return run_with_policy(downloader, n_workers=n_workers, size=size, progress=progress_bar, policy=policy)
 
     progress = Progress(
+        SpinnerColumn('dots'),
         TextColumn('[progress.description]{task.description}'),
         BarColumn(),
         TaskProgressColumn(),
-        TextColumn('{task.completed:.0f}/{task.total:.0f}'),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=cli_ui.console,
     )
     task_id: TaskID | None = None
 
@@ -109,13 +109,10 @@ def _planned_filename(item: DownloadItem) -> str:
     return f'{item.stem}{suffix}'
 
 
-def print_preview(downloader: Downloader, size: int) -> None:
+def print_preview(downloader: Downloader, size: int, *, detailed: bool = False) -> None:
     plan = downloader.plan(size)
-    print(f'Preview: {plan.expected} images -> {downloader.dirname}')
-    for index, item in enumerate(plan.items, start=1):
-        canvas_id = str(item.canvas.get('@id', ''))
-        label = str(item.canvas.get('label', ''))
-        print(f'{index:>5}  {_planned_filename(item)}  {label}  {canvas_id}  {item.source_url}')
+    filenames = [_planned_filename(item) for item in plan.items]
+    cli_ui.render_preview(plan, downloader.dirname, filenames, detailed=detailed)
 
 
 def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, policy: ExistingPolicy) -> ExistingPolicy:
@@ -124,13 +121,8 @@ def _resolve_cli_policy(downloader: Downloader, output: str | Path | None, polic
         return ExistingPolicy.ERROR if policy is ExistingPolicy.ASK else policy
 
     directory = output_directory(downloader, output)
-    typer.echo(f'Output directory already exists and is not empty: {directory}')
-    typer.echo('Choose how to handle existing files:')
-    typer.echo('  resume    verify and reuse valid downloads (recommended)')
-    typer.echo('  overwrite download again and replace planned files')
-    typer.echo('  skip      reuse verified files; refuse ambiguous existing files')
-    typer.echo('  cancel    stop without changing the directory')
-    choices = {policy.value for policy in (ExistingPolicy.RESUME, ExistingPolicy.OVERWRITE, ExistingPolicy.SKIP)}
+    cli_ui.render_existing_output(directory)
+    choices = {item.value for item in (ExistingPolicy.RESUME, ExistingPolicy.OVERWRITE, ExistingPolicy.SKIP)}
     while True:
         selected = typer.prompt('Policy', default='resume', show_default=True).strip().lower()
         if selected == 'cancel':
@@ -152,21 +144,17 @@ def _prompt_int(label: str, default: int, *, minimum: int = 0) -> int:
         typer.echo(f'Value must be >= {minimum}.', err=True)
 
 
-def _run_wizard() -> tuple[DownloadConfig, Downloader]:
+def _run_wizard(*, show_status: bool = True) -> tuple[DownloadConfig, Downloader | None]:
     if not _is_interactive_terminal():
-        raise typer.UsageError('Missing argument URL. Run with --help for usage.')
+        raise typer.BadParameter('URL is required outside an interactive terminal.', param_hint='URL')
 
-    typer.echo()
-    typer.echo('Antenati interactive setup')
-    typer.echo()
-
+    cli_ui.render_banner()
     url = typer.prompt('Gallery or manifest URL').strip()
     downloader = Downloader(url, 0, None)
-    downloader.load()
+    with cli_ui.loading('Loading register metadata…', enabled=show_status):
+        downloader.load()
 
-    typer.echo()
-    downloader.print_gallery_info()
-    typer.echo()
+    cli_ui.render_register(downloader.manifest, downloader.gallery_length)
 
     selection = typer.prompt('Pages [all/range]', default='all').strip().lower()
     if selection == 'range':
@@ -194,12 +182,7 @@ def _run_wizard() -> tuple[DownloadConfig, Downloader]:
     existing = ExistingPolicy.ASK
     directory = Path(output_dir)
     if directory.exists() and directory.is_dir() and any(directory.iterdir()):
-        typer.echo()
-        typer.echo('Output directory already exists and is not empty.')
-        typer.echo('  resume    verify and reuse valid downloads (recommended)')
-        typer.echo('  overwrite download again and replace planned files')
-        typer.echo('  skip      reuse verified files; refuse ambiguous existing files')
-        typer.echo('  cancel    stop')
+        cli_ui.render_existing_output(directory)
         while True:
             selected = typer.prompt('Policy', default='resume').strip().lower()
             if selected == 'cancel':
@@ -209,7 +192,6 @@ def _run_wizard() -> tuple[DownloadConfig, Downloader]:
                 break
             typer.echo('Choose one of: resume, overwrite, skip, cancel.', err=True)
 
-    typer.echo()
     if not typer.confirm('Start download?', default=True):
         raise typer.Exit(code=1)
 
@@ -224,19 +206,7 @@ def _run_wizard() -> tuple[DownloadConfig, Downloader]:
         existing_policy=existing,
         dry_run=False,
     ).validate()
-    if first != 0 or last is not None:
-        downloader = Downloader(config.url, config.first, config.last)
-        downloader.load()
-    return config, downloader
-
-
-def _print_report(report: DownloadReport) -> None:
-    print(
-        f'Completed: {report.completed}/{report.expected}; skipped: {report.skipped}; '
-        f'failed: {len(report.failed)}; bytes written: {format_bytes(report.bytes_written)}'
-    )
-    for failure in report.failed:
-        print(f' - {failure.label}: {failure.reason}')
+    return config, downloader if first == 0 and last is None else None
 
 
 @app.command()
@@ -253,7 +223,7 @@ def cli(
     output_format: Annotated[OutputFormat, typer.Option('--format', help='Output format; JSON rendering will land later in #79')] = OutputFormat.TEXT,
     version: Annotated[bool | None, typer.Option('-v', '--version', callback=_version_callback, is_eager=True, help='Show version and exit')] = None,
     verbose: Annotated[int, typer.Option('--verbose', count=True, help='Increase logging verbosity; repeat for DEBUG')] = 0,
-    debug: Annotated[bool, typer.Option('--debug', help='Enable debug logging')] = False,
+    debug: Annotated[bool, typer.Option('--debug', help='Enable debug logging and tracebacks')] = False,
 ) -> None:
     """Download a gallery/register from Portale Antenati."""
     if output_format is OutputFormat.JSON:
@@ -265,7 +235,7 @@ def cli(
     try:
         wizard_downloader: Downloader | None = None
         if url is None:
-            config, wizard_downloader = _run_wizard()
+            config, wizard_downloader = _run_wizard(show_status=not debug_logging)
         else:
             config = DownloadConfig(
                 url=url,
@@ -280,24 +250,32 @@ def cli(
             ).validate()
 
         downloader = wizard_downloader or Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
-        downloader.load()
+        if wizard_downloader is None:
+            with cli_ui.loading('Loading register metadata…', enabled=not debug_logging):
+                downloader.load()
+            cli_ui.render_register(downloader.manifest, downloader.gallery_length)
+
         if config.output_dir is not None:
             downloader.dirname = Path(config.output_dir)
+
         if config.dry_run:
-            print_preview(downloader, config.size)
+            print_preview(downloader, config.size, detailed=verbose > 0 or debug)
             return
-        if wizard_downloader is None:
-            downloader.print_gallery_info()
+
         policy = _resolve_cli_policy(downloader, config.output_dir, config.existing_policy)
         prepare_output(downloader, config.output_dir, policy)
+        cli_ui.render_run_summary(downloader.dirname, size=config.size, workers=config.n_workers, policy=policy)
         report = run_cli(downloader, config.n_workers, config.size, policy, show_progress=not debug_logging)
+    except KeyboardInterrupt:
+        cli_ui.render_error('Cancelled by user.')
+        raise typer.Exit(code=130) from None
     except (AntenatiError, RequestException, OSError, RuntimeError, ValueError) as exc:
         if debug:
             raise
-        typer.echo(f'Error: {exc}', err=True)
+        cli_ui.render_error(str(exc))
         raise typer.Exit(code=1) from None
 
-    _print_report(report)
+    cli_ui.render_report(report, downloader.dirname)
     if report.cancelled or report.failed or not report.successful:
         raise typer.Exit(code=1)
 

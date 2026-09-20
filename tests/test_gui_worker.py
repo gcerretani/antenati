@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from antenati.downloader import DownloadReport, ProgressBar
-from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Progress, Tick
+from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Phase, Progress, Tick
 from antenati.output import ExistingPolicy
 
 
@@ -60,20 +60,28 @@ def _params(tmp_path: Path) -> DownloadParams:
     )
 
 
-def test_happy_path_emits_progress_ticks_and_done(tmp_path: Path) -> None:
+def test_happy_path_emits_phases_progress_ticks_and_done(tmp_path: Path) -> None:
     fake = _FakeDownloader(n_canvases=3, total_bytes=12345)
     worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
     worker.start(_params(tmp_path))
     events = _drain_events(worker)
-    assert isinstance(events[0], Progress)
-    assert events[0].total == 3
-    assert sum(isinstance(event, Tick) for event in events) == 3
+
+    phases = [event for event in events if isinstance(event, Phase)]
+    assert [phase.message for phase in phases] == ['Loading register metadata…', 'Preparing output…', 'Planning download…']
+
+    progress_events = [event for event in events if isinstance(event, Progress)]
+    assert len(progress_events) == 1
+    assert progress_events[0].total == 3
+
+    ticks = [event for event in events if isinstance(event, Tick)]
+    assert [tick.completed for tick in ticks] == [1, 2, 3]
+
     assert isinstance(events[-1], Done)
     assert events[-1].report.bytes_written == 12345
     assert fake.loaded
 
 
-def test_constructor_failure_emits_failed_event(tmp_path: Path) -> None:
+def test_constructor_failure_emits_phase_then_failed_event(tmp_path: Path) -> None:
     def boom(url: str, first: int, last: int | None, descriptive_names: bool = False):
         del url, first, last, descriptive_names
         raise RuntimeError('manifest blew up')
@@ -81,9 +89,9 @@ def test_constructor_failure_emits_failed_event(tmp_path: Path) -> None:
     worker = DownloadWorker(factory=boom)
     worker.start(_params(tmp_path))
     events = _drain_events(worker)
-    assert len(events) == 1
-    assert isinstance(events[0], Failed)
-    assert 'manifest blew up' in events[0].message
+    assert isinstance(events[0], Phase)
+    assert isinstance(events[-1], Failed)
+    assert 'manifest blew up' in events[-1].message
 
 
 def test_run_failure_emits_failed_event(tmp_path: Path) -> None:
