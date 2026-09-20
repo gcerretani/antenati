@@ -16,11 +16,9 @@ from json import loads
 from os import mkdir, path
 from pathlib import Path
 from re import finditer
-from sys import exit as sys_exit
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from click import confirm, echo
 from requests import RequestException, Response, Session
 from slugify import slugify
 
@@ -324,9 +322,10 @@ class Downloader:
             msg = f'Directory {self.dirname} already exists.'
             if not interactive:
                 raise RuntimeError(msg)
-            echo(msg)
-            if not confirm('Do you want to proceed?'):
-                sys_exit(1)
+            print(msg)
+            answer = input('Do you want to proceed? [y/N]: ').strip().lower()
+            if answer not in {'y', 'yes'}:
+                raise SystemExit(1)
         else:
             mkdir(self.dirname)
 
