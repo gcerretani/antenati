@@ -27,7 +27,7 @@ def test_oversized_image_is_rejected_without_final_file(mocked_http, tmp_path: P
     downloader.check_dir(parentdir=str(tmp_path), interactive=False)
     mocked_http.add(
         responses.GET,
-        'https://iiif.example.org/iiif/img1/full/pct:100/0/default.jpg',
+        'https://iiif-antenati.cultura.gov.it/iiif/img1/full/pct:100/0/default.jpg',
         body=TINY_JPEG,
         status=200,
         content_type='image/jpeg',
@@ -52,14 +52,14 @@ def test_failed_image_bytes_are_refunded_to_total_budget(mocked_http, tmp_path: 
     downloader.check_dir(parentdir=str(tmp_path), interactive=False)
     mocked_http.add(
         responses.GET,
-        'https://iiif.example.org/iiif/img1/full/pct:100/0/default.jpg',
+        'https://iiif-antenati.cultura.gov.it/iiif/img1/full/pct:100/0/default.jpg',
         body=corrupt_body,
         status=200,
         content_type='image/jpeg',
     )
     mocked_http.add(
         responses.GET,
-        'https://iiif.example.org/iiif/img2/full/pct:100/0/default.jpg',
+        'https://iiif-antenati.cultura.gov.it/iiif/img2/full/pct:100/0/default.jpg',
         body=TINY_JPEG,
         status=200,
         content_type='image/jpeg',
