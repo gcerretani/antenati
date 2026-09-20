@@ -124,7 +124,7 @@ def _prompt_int(label: str, default: int, *, minimum: int = 0) -> int:
         typer.echo(f'Value must be >= {minimum}.', err=True)
 
 
-def _run_wizard() -> DownloadConfig:
+def _run_wizard() -> tuple[DownloadConfig, Downloader]:
     if not _is_interactive_terminal():
         raise typer.UsageError('Missing argument URL. Run with --help for usage.')
 
@@ -185,7 +185,7 @@ def _run_wizard() -> DownloadConfig:
     if not typer.confirm('Start download?', default=True):
         raise typer.Exit(code=1)
 
-    return DownloadConfig(
+    config = DownloadConfig(
         url=url,
         output_dir=output_dir,
         size=size,
@@ -196,6 +196,10 @@ def _run_wizard() -> DownloadConfig:
         existing_policy=existing,
         dry_run=False,
     ).validate()
+    if first != 0 or last is not None:
+        downloader = Downloader(config.url, config.first, config.last)
+        downloader.load()
+    return config, downloader
 
 
 def _print_report(report: DownloadReport) -> None:
@@ -227,8 +231,9 @@ def cli(
     if output_format is OutputFormat.JSON:
         raise typer.BadParameter('JSON output is scaffolded but not implemented yet in this draft', param_hint='--format')
 
+    wizard_downloader: Downloader | None = None
     if url is None:
-        config = _run_wizard()
+        config, wizard_downloader = _run_wizard()
     else:
         config = DownloadConfig(
             url=url,
@@ -242,7 +247,7 @@ def cli(
             dry_run=dry_run,
         ).validate()
     _configure_logging(verbose, debug)
-    downloader = Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
+    downloader = wizard_downloader or Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
     downloader.load()
     if config.output_dir is not None:
         downloader.dirname = Path(config.output_dir)
