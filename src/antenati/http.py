@@ -97,7 +97,7 @@ def _validate_public_resource_host(url: str, hostname: str) -> None:
         address = ip_address(hostname)
     except ValueError:
         if '.' not in hostname:
-            raise UrlTrustError(f'{url}: single-label hostnames are not allowed for Antenati resources')
+            raise UrlTrustError(f'{url}: single-label hostnames are not allowed for Antenati resources') from None
     else:
         if not address.is_global:
             raise UrlTrustError(f'{url}: non-public IP destinations are not allowed for Antenati resources')
