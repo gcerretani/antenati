@@ -9,18 +9,40 @@ from typing import Any
 import pytest
 
 from antenati.downloader import DownloadReport, ProgressBar
-from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Phase, Progress, Tick
+from antenati.gui.worker import (
+    Cancelled,
+    Destination,
+    Done,
+    DownloadParams,
+    DownloadWorker,
+    ExistingOutput,
+    Failed,
+    Phase,
+    Progress,
+    Tick,
+)
 from antenati.output import ExistingPolicy
 
 
 class _FakeDownloader:
-    def __init__(self, n_canvases: int = 3, total_bytes: int = 42, raise_in_run: Exception | None = None, block_for_cancel: bool = False) -> None:
-        self.dirname = Path('ignored')
+    def __init__(
+        self,
+        n_canvases: int = 3,
+        total_bytes: int = 42,
+        raise_in_run: Exception | None = None,
+        block_for_cancel: bool = False,
+        dirname: Path | None = None,
+    ) -> None:
+        self.dirname = dirname or Path('ignored')
         self._n_canvases = n_canvases
         self._total_bytes = total_bytes
         self._raise = raise_in_run
         self._block_for_cancel = block_for_cancel
         self.loaded = False
+
+    @property
+    def gallery_length(self) -> int:
+        return self._n_canvases
 
     def load(self):
         self.loaded = True
@@ -49,22 +71,26 @@ def _drain_events(worker: DownloadWorker, timeout: float = 2.0) -> list[Any]:
         return events
 
 
-def _params(tmp_path: Path) -> DownloadParams:
+def _params(tmp_path: Path, *, output_dir: str | None = None, policy: ExistingPolicy = ExistingPolicy.OVERWRITE) -> DownloadParams:
     return DownloadParams(
         url='https://example.org/gallery',
-        output_dir=str(tmp_path / 'out'),
+        output_dir=output_dir if output_dir is not None else str(tmp_path / 'out'),
         size=0,
         first=0,
         last=None,
-        existing_policy=ExistingPolicy.OVERWRITE,
+        existing_policy=policy,
     )
 
 
-def test_happy_path_emits_phases_progress_ticks_and_done(tmp_path: Path) -> None:
+def test_happy_path_emits_destination_phases_progress_ticks_and_done(tmp_path: Path) -> None:
+    output = tmp_path / 'out'
     fake = _FakeDownloader(n_canvases=3, total_bytes=12345)
     worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
     worker.start(_params(tmp_path))
     events = _drain_events(worker)
+
+    destinations = [event for event in events if isinstance(event, Destination)]
+    assert [event.path for event in destinations] == [str(output)]
 
     phases = [event for event in events if isinstance(event, Phase)]
     assert [phase.message for phase in phases] == ['Loading register metadata…', 'Preparing output…', 'Planning download…']
@@ -79,6 +105,49 @@ def test_happy_path_emits_phases_progress_ticks_and_done(tmp_path: Path) -> None
     assert isinstance(events[-1], Done)
     assert events[-1].report.bytes_written == 12345
     assert fake.loaded
+
+
+def test_empty_output_uses_generated_register_directory(tmp_path: Path) -> None:
+    generated = tmp_path / 'generated-register'
+    fake = _FakeDownloader(dirname=generated)
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(tmp_path)
+    params.output_dir = None
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert destination.path == str(generated)
+    assert generated.is_dir()
+    assert isinstance(events[-1], Done)
+
+
+def test_ask_policy_on_generated_existing_output_waits_for_gui_choice(tmp_path: Path) -> None:
+    generated = tmp_path / 'generated-register'
+    generated.mkdir()
+    (generated / 'existing.txt').write_text('existing', encoding='utf-8')
+    fake = _FakeDownloader(dirname=generated)
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(tmp_path, policy=ExistingPolicy.ASK)
+    params.output_dir = None
+
+    worker.start(params)
+    seen: list[Any] = []
+    while True:
+        event = worker.events.get(timeout=2.0)
+        seen.append(event)
+        if isinstance(event, ExistingOutput):
+            break
+
+    assert event.path == str(generated)
+    assert worker.is_running()
+
+    worker.resolve_existing_policy(ExistingPolicy.RESUME)
+    remaining = _drain_events(worker)
+
+    assert any(isinstance(item, Destination) for item in seen)
+    assert isinstance(remaining[-1], Done)
 
 
 def test_constructor_failure_emits_phase_then_failed_event(tmp_path: Path) -> None:

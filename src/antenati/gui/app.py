@@ -18,7 +18,18 @@ from antenati import __contact__, __copyright__, __version__
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE
 from antenati.formatting import format_bytes
 from antenati.gui.progress import TkProgress
-from antenati.gui.worker import Cancelled, Done, DownloadParams, DownloadWorker, Failed, Phase, Progress, Tick
+from antenati.gui.worker import (
+    Cancelled,
+    Destination,
+    Done,
+    DownloadParams,
+    DownloadWorker,
+    ExistingOutput,
+    Failed,
+    Phase,
+    Progress,
+    Tick,
+)
 from antenati.output import ExistingPolicy
 
 logger = logging.getLogger(__name__)
@@ -338,7 +349,7 @@ class App:
 
         ttk.Label(
             entry_frame,
-            text='Output directory',
+            text='Output directory (optional)',
         ).grid(
             row=2,
             column=0,
@@ -356,6 +367,16 @@ class App:
             pady=6,
             sticky=tk.EW,
         )
+        ttk.Label(
+            entry_frame,
+            text='Leave empty to generate the register folder automatically',
+        ).grid(
+            row=3,
+            column=1,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(0, 6),
+        )
         ttk.Button(
             entry_frame,
             text='Browse…',
@@ -369,7 +390,7 @@ class App:
 
         actions = ttk.Frame(entry_frame)
         actions.grid(
-            row=3,
+            row=4,
             column=0,
             columnspan=4,
             pady=(12, 0),
@@ -475,27 +496,18 @@ class App:
         if not url:
             raise RuntimeError('Please enter a valid URL.')
         output_value = self._path.get().strip()
-        if not output_value:
-            raise RuntimeError('Please choose an output directory.')
-
-        policy = self._resolve_gui_policy(
-            output_value,
-            ExistingPolicy(self._existing.get()),
-        )
-        if policy is None:
-            return
 
         last_raw = self._last.get().strip()
         last_val = int(last_raw) if last_raw else None
         params = DownloadParams(
             url=url,
-            output_dir=output_value,
+            output_dir=output_value or None,
             size=self._size.get(),
             first=int(self._first.get()),
             last=last_val,
             n_workers=int(self._n_workers.get()),
             descriptive_names=bool(self._descriptive.get()),
-            existing_policy=policy,
+            existing_policy=ExistingPolicy(self._existing.get()),
         )
 
         self._progress = TkProgress(self._progress_bar)
@@ -528,7 +540,16 @@ class App:
             )
 
     def _handle_event(self, event: object) -> None:
-        if isinstance(event, Phase):
+        if isinstance(event, Destination):
+            self._path.set(event.path)
+        elif isinstance(event, ExistingOutput):
+            policy = self._resolve_gui_policy(event.path, ExistingPolicy.ASK)
+            if policy is None:
+                self._footer_label.configure(text='Cancelling…')
+                self._worker.cancel()
+            else:
+                self._worker.resolve_existing_policy(policy)
+        elif isinstance(event, Phase):
             self._footer_label.configure(text=event.message)
             if self._progress is not None and self._progress.total == 0:
                 self._progress.start_indeterminate()

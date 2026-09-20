@@ -35,7 +35,7 @@ Open the project's [GitHub Releases](https://github.com/gcerretani/antenati/rele
 
 These are standalone applications built by the release workflow: **Python and `pip` are not required**. On macOS/Linux you may need to allow execution according to your operating system's security settings.
 
-The standalone application provides the graphical interface described below. Paste the gallery URL, choose an output directory and start the download.
+The standalone application provides the graphical interface described below. Paste the gallery URL and start the download; the output folder is generated automatically from register metadata unless you choose an exact destination.
 
 ### 2. Install from PyPI — recommended for Python/command-line users
 
@@ -194,7 +194,7 @@ antenati-gui
 
 ![GUI Screenshot](https://raw.githubusercontent.com/gcerretani/antenati/master/docs/gui_screenshot.png)
 
-Paste a gallery/manifest URL, choose the **exact destination directory**, then select the page range, image size, worker count, descriptive-name option and existing-output policy. While the manifest and page plan are being resolved the GUI shows an indeterminate loading animation and live phase text; once the page count is known it automatically switches to determinate download progress. The default `ask` policy prompts when the destination already contains files and recommends verified resume. The GUI runs the same downloader configuration, validation and result model as the CLI.
+Paste a gallery/manifest URL, then select the page range, image size, worker count, descriptive-name option and existing-output policy. The output field is optional: leave it empty to use the same metadata-derived register folder as the CLI, or choose an exact destination. While the manifest and page plan are being resolved the GUI shows an indeterminate loading animation and live phase text; once the page count is known it automatically switches to determinate download progress. The default `ask` policy prompts when the destination already contains files and recommends verified resume. The GUI runs the same downloader configuration, validation and result model as the CLI.
 
 ## AWS WAF and live-site limitations
 
