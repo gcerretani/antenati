@@ -4,6 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/antenati)](https://pypi.org/project/antenati/)
 [![License: GPL-3.0-or-later](https://img.shields.io/pypi/l/antenati)](https://github.com/gcerretani/antenati/blob/master/LICENSE)
 [![CI](https://github.com/gcerretani/antenati/actions/workflows/ci.yml/badge.svg)](https://github.com/gcerretani/antenati/actions/workflows/ci.yml)
+[![ko-fi](https://img.shields.io/badge/support-ko--fi-ff5e5b)](https://ko-fi.com/gcerretani)
 
 `antenati` downloads the digitised pages of a register from the Italian [Portale Antenati](https://antenati.cultura.gov.it/) — the state civil/parish record archive — as a folder of image files on your computer.
 
@@ -210,3 +211,7 @@ Finding a register still requires browsing the portal yourself, exactly as when 
 Released under the [GNU General Public License v3 or later](https://www.gnu.org/licenses/gpl-3.0.html).
 
 See the [changelog](https://github.com/gcerretani/antenati/blob/master/CHANGELOG.md) for release history, [SECURITY.md](https://github.com/gcerretani/antenati/blob/master/SECURITY.md) for the network trust model and how to report a vulnerability, and the [issue tracker](https://github.com/gcerretani/antenati/issues) for known limitations and planned work.
+
+## Support
+
+If `antenati` saved you time, consider [supporting it on Ko-fi](https://ko-fi.com/gcerretani).
