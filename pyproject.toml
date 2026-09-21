@@ -77,6 +77,8 @@ include = [
     "tests",
     "README.md",
     "CHANGELOG.md",
+    "TROUBLESHOOTING.md",
+    "SECURITY.md",
     "LICENSE",
     "pyproject.toml",
 ]

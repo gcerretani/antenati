@@ -5,23 +5,11 @@
 [![License: GPL-3.0-or-later](https://img.shields.io/pypi/l/antenati)](https://github.com/gcerretani/antenati/blob/master/LICENSE)
 [![CI](https://github.com/gcerretani/antenati/actions/workflows/ci.yml/badge.svg)](https://github.com/gcerretani/antenati/actions/workflows/ci.yml)
 
-`antenati` downloads the digitised pages of a **single gallery/register** from the Italian [Portale Antenati](https://antenati.cultura.gov.it/), using the IIIF manifest exposed by the portal.
+`antenati` downloads the digitised pages of a register from the Italian [Portale Antenati](https://antenati.cultura.gov.it/) — the state civil/parish record archive — as a folder of image files on your computer.
 
-One invocation resolves one gallery or direct Antenati manifest, builds a deterministic download plan and writes the selected pages to disk. It does **not** recursively mirror an Archivio di Stato, a municipality, or search results from the portal.
+Point it at the URL of a register you found on the portal, and it downloads that register: full resolution or a smaller size, with a desktop app or a command line, no Python required if you use the standalone app. One run always covers a single gallery/register; it never searches the portal, crawls an archive, or mirrors search results.
 
-## Highlights
-
-- **Full-resolution or resized images** — request the original IIIF image size or a bounded size.
-- **Deterministic filenames** — numeric page labels are zero-padded from the complete gallery size, and collisions are resolved deterministically.
-- **Verified image writes** — supported image MIME types and file signatures are checked before the temporary file is atomically promoted to its final filename.
-- **Verified resume** — existing files are reused only when provenance, requested resolution, byte size and SHA-256 still match.
-- **Persistent provenance** — each completed run stores the source manifest plus a per-image JSON index with canvas/source mapping, size and hash.
-- **Bounded execution** — image bodies are streamed, in-flight work is bounded and explicit resource ceilings protect against anomalous sources.
-- **Preview mode** — inspect the exact pages, source URLs and output filenames before image files are written.
-- **Modern CLI and GUI** — a Rich terminal experience and Tk desktop interface share the same core configuration, validation and reporting rules.
-- **Cross-platform** — Windows, macOS and Linux, with standalone GUI executables for users who do not want to install Python.
-
-## Installation and ways to use antenati
+## Install
 
 There are several supported ways to run the program. **If you do not use Python, the standalone GUI from GitHub Releases is the simplest option.**
 
@@ -35,8 +23,6 @@ Open the project's [GitHub Releases](https://github.com/gcerretani/antenati/rele
 
 These are standalone applications built by the release workflow: **Python and `pip` are not required**. On macOS/Linux you may need to allow execution according to your operating system's security settings.
 
-The standalone application provides the graphical interface described below. The GUI keeps a fixed **Save in** base directory (the current working directory by default). With **Create a separate folder for each register** enabled, each register gets its own metadata-derived child folder inside that base; the base field never changes to the previous register path.
-
 ### 2. Install from PyPI — recommended for Python/command-line users
 
 Python **3.10 or newer** is required:
@@ -49,13 +35,6 @@ This installs both:
 
 - `antenati` — command-line interface;
 - `antenati-gui` — Tk desktop interface.
-
-Examples:
-
-```text
-antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
-antenati-gui
-```
 
 To upgrade an existing PyPI installation:
 
@@ -76,35 +55,55 @@ pip install -e ".[dev]"
 
 Activate the virtual environment using the command appropriate for your operating system, then run `antenati` or `antenati-gui`. This method is intended for development and testing; normal users should prefer a release executable or PyPI.
 
-## Supported inputs
+## Quick start
 
-The supported source is the **Portale Antenati** and the IIIF structures currently emitted by it. You can pass either:
+### 1. Find the register on the portal
 
-1. an Antenati gallery URL, for example:
-
-   ```text
-   https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
-   ```
-
-2. the direct IIIF manifest URL exposed by that gallery, for example a URL under `dam-antenati.cultura.gov.it/.../manifest`.
-
-`antenati` is IIIF-based internally, but it is **not currently a generic IIIF downloader**. Broader Presentation/Image API variants may be unsupported even when they are valid IIIF.
-
-For v7, the user-facing gallery boundary is the public `https://antenati.cultura.gov.it` portal. Manifest and image endpoints discovered from trusted Antenati content are allowed to move between public HTTPS backend/CDN hosts without requiring a code update. Derived URLs and every redirect are still validated before use: HTTP, credentials in URLs, unusual ports, localhost and private/link-local IP destinations are rejected. Generic IIIF support, if added later, can use an explicit source profile without weakening this trust chain.
-
-## Command line
-
-Basic use:
+Browse or search [antenati.cultura.gov.it](https://antenati.cultura.gov.it/) for the register you need, open its gallery, and copy the URL from your browser's address bar. It looks like this:
 
 ```text
-antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
+https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
 ```
 
-Running `antenati` with no URL in an interactive terminal starts a guided wizard. The CLI shows a loading spinner while resolving the register, renders portal metadata without embedded HTML, and switches to a live Rich progress display for the image download. At `-vv` the animated UI is disabled in favour of a linear diagnostic log.
+(A direct IIIF manifest URL, such as one under `dam-antenati.cultura.gov.it/.../manifest`, also works and can be handy if the gallery page itself is unreachable — see [TROUBLESHOOTING.md](https://github.com/gcerretani/antenati/blob/master/TROUBLESHOOTING.md).)
 
-By default the output directory is derived from the register metadata. Use `--output` to select an exact destination path.
+### 2. Download it
 
-### Core options
+- **Desktop app** — paste the URL into **Gallery or manifest URL** and click **Download**.
+- **Command line**:
+
+  ```text
+  antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
+  ```
+
+  Running `antenati` with no URL in an interactive terminal starts a guided wizard instead.
+
+### 3. What you get
+
+A folder named after the register's own portal metadata, containing one image per page plus two hidden files used to verify and resume the download:
+
+```text
+archivio-di-stato-di-lucca-stato-civile-napoleonico-viareggio-1807-matrimoni-19944535/
+├── pag-001.jpg
+├── pag-002.jpg
+├── ...
+├── .antenati-manifest.json
+└── .antenati-index.json
+```
+
+By default the folder is created in the current directory; use `-o`/`--output` (or the GUI's **Save in**) to choose an exact destination. See "Output files and resume" below for what the two hidden files are for.
+
+## Everyday use
+
+| I want to... | Do this |
+|---|---|
+| Download only some pages | `-f 19 -l 40` — zero-based, `-l` excluded (pages 20 to 40) |
+| Save time/disk with smaller images | `-s 2000` — longest side in pixels; `0` requests full resolution |
+| Resume an interrupted download | `--existing resume` |
+| See what would be downloaded before committing | `--dry-run` |
+| Drive it from another program or script | `--format json` |
+
+## Options
 
 | Option | Description |
 |---|---|
@@ -122,83 +121,31 @@ By default the output directory is derived from the register metadata. Use `--ou
 
 Run `antenati -h` for the authoritative option list.
 
-### Existing-output policies
+### If the destination already contains files
 
-- `ask` — default interactive behavior. If the destination is non-empty, CLI/GUI ask what to do; verified `resume` is the recommended/default choice.
-- `error` — refuse a non-empty existing output directory without asking.
-- `overwrite` — download again and replace planned destination files through atomic writes.
-- `resume` — verify indexed existing files and redownload only missing, stale, mismatched or corrupt pages.
-- `skip` — reuse only files that can be verified from the provenance index; ambiguous unverified files are never silently accepted.
+| Policy | Behavior |
+|---|---|
+| `ask` (default) | Interactively asks what to do; the recommended answer is `resume`. |
+| `resume` | Verifies existing files and redownloads only missing, stale or corrupt pages. |
+| `skip` | Reuses only verified files; refuses to overwrite an unverified file already at a planned path. |
+| `overwrite` | Downloads again and replaces every planned file. |
+| `error` | Refuses to proceed if the destination is non-empty. |
 
-For scripts and unattended runs, select an explicit non-interactive policy instead of `ask`, for example `--existing resume` or `--existing error`. This is required in `--format json` mode whenever the destination is already non-empty, because JSON mode never opens an interactive prompt.
+`ask` needs an interactive terminal, so scripts and `--format json` runs must select an explicit policy such as `resume` or `error`.
 
-### Machine-readable JSON
+### Scripting
 
-Use `--format json` when another program needs a stable structured result:
+Use `--format json` for a stable, versioned JSON result on stdout; logging and diagnostics stay on stderr:
 
 ```text
 antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x --existing resume --format json
 ```
 
-JSON mode writes **only JSON to stdout**: no Rich panels, spinner or progress bar. Logging and operational diagnostics remain on stderr. The payload is versioned with `schema_version` and includes the resolved source/manifest, cleaned register metadata, output directory, effective options and the final `DownloadReport` fields (`expected`, `attempted`, `completed`, `skipped`, failures, cancellation state, remaining work and exact bytes written).
+`--dry-run --format json` returns the planned filenames, canvas IDs and IIIF source URLs instead of downloading anything.
 
-`--dry-run --format json` returns the resolved plan instead, including each planned filename, canvas ID and IIIF source URL, without creating the output directory or downloading image bodies.
+## Desktop app
 
-The same source canvas receives the same planned filename regardless of the selected subset, worker count or completion order. For example, a 150-page gallery uses names such as `pag-001.jpg`; downloading only pages 7–12 still produces the corresponding zero-padded names from the complete gallery.
-
-## Provenance and integrity
-
-A completed output directory contains the downloaded images plus:
-
-- `.antenati-manifest.json` — the source IIIF manifest captured for the run;
-- `.antenati-index.json` — per-image provenance including source/canvas URL, label, filename, requested size, byte size, SHA-256 and download timestamp.
-
-An image is counted as completed only after its response is streamed to a temporary file, the supported image format/signature is validated, the file is flushed, and the temporary path is atomically replaced into its final destination. `DownloadReport` separately tracks expected, attempted, completed, skipped, failed and cancelled work.
-
-These checks improve local integrity; they do not cryptographically authenticate data supplied by the remote archive itself.
-
-### Programmatic failure handling
-
-In v7, `Downloader.run()` returns a structured `DownloadReport` even when individual pages fail. Programmatic callers should inspect `report.successful` (and `report.failed`) instead of relying on a partial-download exception:
-
-```python
-report = downloader.run(n_workers=2, size=0, progress=progress)
-if not report.successful:
-    for failure in report.failed:
-        print(f'{failure.label}: {failure.reason}')
-```
-
-Callers that prefer exception-based fail-fast handling can opt in with `strict=True`. An unsuccessful report then raises `DownloadFailedError`, and the complete report remains available as `exc.report`:
-
-```python
-from antenati import DownloadFailedError
-
-try:
-    downloader.run(n_workers=2, size=0, progress=progress, strict=True)
-except DownloadFailedError as exc:
-    print(exc.report.failed)
-```
-
-## CLI / GUI capability parity
-
-| Capability | CLI | GUI |
-|---|:---:|:---:|
-| Gallery or direct manifest input | yes | yes |
-| Page range | yes | yes |
-| Image size | yes | yes |
-| Worker count | yes | yes |
-| Descriptive filenames | yes | yes |
-| Exact output directory | yes | yes |
-| Existing-output policy / ask | yes | yes |
-| Verified resume | yes | yes |
-| Shared validation/reporting | yes | yes |
-| Dry-run preview | yes | not yet |
-
-Dry-run is currently a CLI review surface; the underlying download plan is shared and can support a future GUI preview without changing execution semantics.
-
-## Graphical interface
-
-If you downloaded a standalone release executable, launch that application directly. If you installed from PyPI, launch:
+If you downloaded a standalone release executable, launch that application directly. If you installed from PyPI, run:
 
 ```text
 antenati-gui
@@ -206,36 +153,60 @@ antenati-gui
 
 ![GUI Screenshot](https://raw.githubusercontent.com/gcerretani/antenati/master/docs/gui_screenshot.png)
 
-Paste a gallery/manifest URL, then select the page range, image size, worker count, descriptive-name option and existing-output policy. The **Destination** section separates the fixed **Save in** base path from the generated register folder. By default, **Create a separate folder for each register (recommended)** is enabled: after metadata loads, the GUI shows only the generated register-folder name while keeping the base path unchanged. Use **Change…** to choose another base directory, or clear the checkbox to save directly into that selected folder. Successful downloads show the full final path and enable **Open folder**. While the manifest and page plan are being resolved the GUI shows an indeterminate loading animation and live phase text; once the page count is known it automatically switches to determinate download progress. The default `ask` policy prompts when the destination already contains files and recommends verified resume. The GUI runs the same downloader configuration, validation and result model as the CLI.
+Paste a gallery or manifest URL, then set:
 
-## AWS WAF and live-site limitations
+- **Size (px)** — `0` requests full resolution.
+- **First page** / **Last page** — zero-based; **Last page** is excluded.
+- **Workers** — concurrent image downloads.
+- **Filenames** — include archive/image IDs.
+- **Existing files** — `ask`, `error`, `overwrite`, `skip` or `resume`.
 
-The public gallery HTML can be blocked for automated clients by the portal's AWS WAF. This can happen even while the direct manifest and IIIF image backends remain reachable.
+The **Destination** panel keeps a fixed **Save in** base folder. With **Create a separate folder for each register** enabled (the default), each register gets its own metadata-derived subfolder without the base path ever changing, so consecutive downloads land side by side instead of nesting into each other. Use **Change…** to pick another base folder, or clear the checkbox to save directly into the selected folder.
 
-If a gallery URL fails with an AWS WAF challenge or HTTP 403:
+The desktop app runs the same download engine, validation and reporting as the command line, except for the `--dry-run` preview, which is CLI-only for now.
 
-1. open the gallery in a browser;
-2. copy its **IIIF manifest** link from the portal interface;
-3. pass that manifest URL directly to `antenati` or the GUI.
+## Output files and resume
 
-The repository's scheduled live checks intentionally test gallery HTML, direct manifest access and image download as separate canaries so a frontend/WAF failure does not hide backend status.
+The output folder name is derived from the register's own portal metadata (archival context, title, typology) plus its archive ID, so it stays meaningful and unique across registers.
 
-The Portale Antenati is a third-party service and may change availability, HTML, metadata or IIIF structures without notice. The normal offline test suite verifies the structures supported by this project; it cannot guarantee future portal compatibility.
+Image filenames follow the register's own page labels, zero-padded to the size of the full register (`pag-001.jpg`, `pag-002.jpg`, ...), so a partial download uses the same names as a full one. Add `-d`/`--descriptive-names` to also include the archive and image IDs, for example `pag-001+an_ua19944535+5gGAbBp.jpg`.
 
-## Cancellation and resource limits
+Two hidden files travel alongside the images:
 
-Cancellation prevents queued work from being started where possible. Requests already active are bounded by HTTP connect/read timeouts rather than being forcibly terminated at an arbitrary byte boundary.
+- `.antenati-manifest.json` — the IIIF manifest for this register, as fetched.
+- `.antenati-index.json` — one entry per downloaded image, with its source URL, requested size, byte size and SHA-256.
 
-The downloader also applies ceilings to metadata size, image size, canvas count, total downloaded bytes and in-flight work. These are safety limits, not claims about maximum IIIF sizes in general.
+These are what make `resume`/`skip` reliable: a file is reused only when the manifest, the requested size, and the on-disk byte size and hash all still match; anything stale, mismatched or corrupt is redownloaded instead of silently accepted. See [SECURITY.md](https://github.com/gcerretani/antenati/blob/master/SECURITY.md) for what these checks do and don't guarantee.
+
+## Using antenati from Python
+
+`antenati` can also be used as a library:
+
+```python
+from antenati import Downloader, ProgressBar
+
+downloader = Downloader(url, first=0, last=None)
+progress = ProgressBar(set_total=lambda total: None, update=lambda: None)
+report = downloader.run(n_workers=2, size=0, progress=progress)
+if not report.successful:
+    for failure in report.failed:
+        print(f'{failure.label}: {failure.reason}')
+```
+
+Pass `strict=True` to `run()` to raise `DownloadFailedError` on any failure instead of returning a partial report; the full report remains available as `exc.report`.
+
+## Troubleshooting
+
+Getting a WAF/HTTP 403 error on the gallery page, an "incomplete" download, or a resource-limit message? See [TROUBLESHOOTING.md](https://github.com/gcerretani/antenati/blob/master/TROUBLESHOOTING.md).
 
 ## Disclaimer
 
 `antenati` is an independent, unofficial tool. It is not affiliated with, endorsed by, or sponsored by the Direzione Generale Archivi, the Ministero della Cultura, or the Portale Antenati.
 
-Finding a register still requires browsing the portal yourself, exactly as when viewing it in a web browser: the tool takes the URL of a register you already located and downloads its pages, it does not search, index or crawl the portal (see "Supported inputs" above). Downloaded images remain subject to the Portale Antenati's own [terms of use](https://antenati.cultura.gov.it/note-legali/), including their personal/non-commercial use restriction and the prohibition on republishing or mirroring them elsewhere; using this tool does not change or waive those terms, and users remain solely responsible for complying with them.
+Finding a register still requires browsing the portal yourself, exactly as when viewing it in a web browser: the tool takes the URL of a register you already located and downloads its pages, it does not search, index or crawl the portal. Downloaded images remain subject to the Portale Antenati's own [terms of use](https://antenati.cultura.gov.it/note-legali/), including their personal/non-commercial use restriction and the prohibition on republishing or mirroring them elsewhere; using this tool does not change or waive those terms, and users remain solely responsible for complying with them.
 
 ## License
 
 Released under the [GNU General Public License v3 or later](https://www.gnu.org/licenses/gpl-3.0.html).
 
-See the [changelog](https://github.com/gcerretani/antenati/blob/master/CHANGELOG.md) for release history and the [issue tracker](https://github.com/gcerretani/antenati/issues) for known limitations and planned work.
+See the [changelog](https://github.com/gcerretani/antenati/blob/master/CHANGELOG.md) for release history, [SECURITY.md](https://github.com/gcerretani/antenati/blob/master/SECURITY.md) for the network trust model and how to report a vulnerability, and the [issue tracker](https://github.com/gcerretani/antenati/issues) for known limitations and planned work.
