@@ -100,7 +100,7 @@ Basic use:
 antenati https://antenati.cultura.gov.it/ark:/12657/an_ua19944535/w9DWR8x
 ```
 
-Running `antenati` with no URL in an interactive terminal starts a guided wizard. The CLI shows a loading spinner while resolving the register, renders portal metadata without embedded HTML, and switches to a live Rich progress display for the image download. In `--debug` mode the animated UI is disabled in favour of a linear diagnostic log.
+Running `antenati` with no URL in an interactive terminal starts a guided wizard. The CLI shows a loading spinner while resolving the register, renders portal metadata without embedded HTML, and switches to a live Rich progress display for the image download. At `-vv` the animated UI is disabled in favour of a linear diagnostic log.
 
 By default the output directory is derived from the register metadata. Use `--output` to select an exact destination path.
 
@@ -109,7 +109,7 @@ By default the output directory is derived from the register metadata. Use `--ou
 | Option | Description |
 |---|---|
 | `-s`, `--size N` | Maximum image size in pixels; `0` requests full resolution. |
-| `-n`, `--workers N` | Maximum number of image workers. Legacy `--nthreads` remains accepted for v6 script compatibility. |
+| `-n`, `--workers N` | Maximum number of image workers. Deprecated `--nthreads` alias kept for v6 script compatibility. |
 | `-f`, `--first N` | Zero-based index of the first page to include. |
 | `-l`, `--last N` | Zero-based exclusive end index. |
 | `-d`, `--descriptive-names` | Include archive/image identifiers in filenames. |
@@ -117,9 +117,8 @@ By default the output directory is derived from the register metadata. Use `--ou
 | `--existing {ask,error,overwrite,skip,resume}` | Policy when the output already exists. Default: `ask`. |
 | `--dry-run` | Resolve the source and print the planned pages/filenames without downloading image bodies or creating the output directory. |
 | `--format {text,json}` | Human-readable Rich output (default) or stable machine-readable JSON. |
-| `--verbose` | Increase logging verbosity; repeat for DEBUG. |
-| `--debug` | Enable diagnostic logging and full tracebacks; animated terminal progress is disabled for readable logs. |
-| `-v`, `--version` | Print the version and exit. |
+| `-v`, `--verbose` | Increase logging verbosity; repeat (`-vv`) for DEBUG logging, full tracebacks and a linear diagnostic log instead of the animated UI. |
+| `-V`, `--version` | Print the version and exit. |
 
 Run `antenati -h` for the authoritative option list.
 
@@ -228,6 +227,12 @@ The Portale Antenati is a third-party service and may change availability, HTML,
 Cancellation prevents queued work from being started where possible. Requests already active are bounded by HTTP connect/read timeouts rather than being forcibly terminated at an arbitrary byte boundary.
 
 The downloader also applies ceilings to metadata size, image size, canvas count, total downloaded bytes and in-flight work. These are safety limits, not claims about maximum IIIF sizes in general.
+
+## Disclaimer
+
+`antenati` is an independent, unofficial tool. It is not affiliated with, endorsed by, or sponsored by the Direzione Generale Archivi, the Ministero della Cultura, or the Portale Antenati.
+
+Finding a register still requires browsing the portal yourself, exactly as when viewing it in a web browser: the tool takes the URL of a register you already located and downloads its pages, it does not search, index or crawl the portal (see "Supported inputs" above). Downloaded images remain subject to the Portale Antenati's own [terms of use](https://antenati.cultura.gov.it/note-legali/), including their personal/non-commercial use restriction and the prohibition on republishing or mirroring them elsewhere; using this tool does not change or waive those terms, and users remain solely responsible for complying with them.
 
 ## License
 
