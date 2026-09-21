@@ -26,8 +26,14 @@ def test_cli_help_uses_modern_workers_name_and_keeps_legacy_alias() -> None:
     assert '--format' in output
 
 
+def test_cli_help_short_alias_works() -> None:
+    result = runner.invoke(app, ['-h'])
+    assert result.exit_code == 0
+    assert 'Usage' in result.output
+
+
 def test_cli_version_short_alias_still_works() -> None:
-    result = runner.invoke(app, ['-v'])
+    result = runner.invoke(app, ['-V'])
     assert result.exit_code == 0
     assert __version__ in result.output
 
@@ -138,7 +144,7 @@ def test_debug_logging_keeps_third_party_http_quiet() -> None:
     old_antenati_level = antenati_logger.level
     old_urllib3_level = urllib3_logger.level
     try:
-        antenati_cli._configure_logging(verbosity=0, debug=True)
+        antenati_cli._configure_logging(verbosity=2)
         assert antenati_logger.level == logging.DEBUG
         assert urllib3_logger.level == logging.WARNING
     finally:

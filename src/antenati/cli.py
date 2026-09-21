@@ -35,12 +35,13 @@ app = typer.Typer(
     epilog=__copyright__,
     no_args_is_help=False,
     rich_markup_mode='rich',
+    context_settings={'help_option_names': ['-h', '--help']},
 )
 
 
-def _configure_logging(verbosity: int, debug: bool = False) -> None:
+def _configure_logging(verbosity: int) -> None:
     level = logging.WARNING
-    if debug or verbosity >= 2:
+    if verbosity >= 2:
         level = logging.DEBUG
     elif verbosity >= 1:
         level = logging.INFO
@@ -216,25 +217,27 @@ def _run_wizard(*, show_status: bool = True) -> tuple[DownloadConfig, Downloader
 def cli(
     url: Annotated[str | None, typer.Argument(help='URL of the gallery page or its IIIF manifest')] = None,
     size: Annotated[int, typer.Option('-s', '--size', help='Image size in pixels; 0 means full size')] = DEFAULT_SIZE,
-    workers: Annotated[int, typer.Option('-n', '--workers', '--nthreads', help='Maximum number of concurrent download workers')] = DEFAULT_N_THREADS,
+    workers: Annotated[
+        int,
+        typer.Option('-n', '--workers', '--nthreads', help='Maximum number of concurrent download workers (--nthreads is a deprecated alias)'),
+    ] = DEFAULT_N_THREADS,
     first: Annotated[int, typer.Option('-f', '--first', help='First image to download')] = 0,
-    last: Annotated[int | None, typer.Option('-l', '--last', help='First image NOT to download')] = None,
+    last: Annotated[int | None, typer.Option('-l', '--last', help='Exclusive end index: first image NOT to download')] = None,
     descriptive_names: Annotated[bool, typer.Option('-d', '--descriptive-names', help='Include archive and image IDs in saved file names')] = False,
     output: Annotated[Path | None, typer.Option('-o', '--output', help='Exact output directory (default: generated archive directory)')] = None,
     existing: Annotated[ExistingPolicy, typer.Option('--existing', help='How to handle an existing output directory')] = ExistingPolicy.ASK,
     dry_run: Annotated[bool, typer.Option('--dry-run', help='Show the resolved download plan without writing image files')] = False,
     output_format: Annotated[OutputFormat, typer.Option('--format', help='Output format: text or machine-readable JSON')] = OutputFormat.TEXT,
-    version: Annotated[bool | None, typer.Option('-v', '--version', callback=_version_callback, is_eager=True, help='Show version and exit')] = None,
-    verbose: Annotated[int, typer.Option('--verbose', count=True, help='Increase logging verbosity; repeat for DEBUG')] = 0,
-    debug: Annotated[bool, typer.Option('--debug', help='Enable debug logging and tracebacks')] = False,
+    version: Annotated[bool | None, typer.Option('-V', '--version', callback=_version_callback, is_eager=True, help='Show version and exit')] = None,
+    verbose: Annotated[int, typer.Option('-v', '--verbose', count=True, help='Increase logging verbosity; repeat for DEBUG logging and full tracebacks')] = 0,
 ) -> None:
     """Download a gallery/register from Portale Antenati."""
     json_mode = output_format is OutputFormat.JSON
     if json_mode and url is None:
         raise typer.BadParameter('URL is required with --format json.', param_hint='URL')
 
-    _configure_logging(verbose, debug)
-    debug_logging = debug or verbose >= 2
+    _configure_logging(verbose)
+    debug_logging = verbose >= 2
 
     try:
         wizard_downloader: Downloader | None = None
@@ -267,7 +270,7 @@ def cli(
             if json_mode:
                 cli_json.emit(cli_json.plan_payload(downloader, config))
             else:
-                print_preview(downloader, config.size, detailed=verbose > 0 or debug)
+                print_preview(downloader, config.size, detailed=verbose > 0)
             return
 
         policy = _resolve_cli_policy(
@@ -290,7 +293,7 @@ def cli(
         cli_ui.render_error('Cancelled by user.')
         raise typer.Exit(code=130) from None
     except (AntenatiError, RequestException, OSError, RuntimeError, ValueError) as exc:
-        if debug:
+        if debug_logging:
             raise
         cli_ui.render_error(str(exc))
         raise typer.Exit(code=1) from None
