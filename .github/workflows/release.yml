@@ -284,6 +284,7 @@ jobs:
       run: gh release edit "$GITHUB_REF_NAME" --draft=false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_REPO: ${{ github.repository }}
 
     - name: Verify the version is live on PyPI
       run: |
