@@ -86,7 +86,7 @@ jobs:
       if: runner.os != 'Windows'
       run: |
         rm -rf smoke-test
-        python -m zipfile -e ${{ matrix.zip_name }} smoke-test
+        unzip ${{ matrix.zip_name }} -d smoke-test
         test -x smoke-test/${{ matrix.exe }}
         version=$(smoke-test/${{ matrix.exe }} --version)
         test -n "$version"
