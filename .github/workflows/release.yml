@@ -19,39 +19,57 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
+        persist-credentials: false
         # hatch-vcs derives the package version from the repository tags.
         # A shallow checkout can therefore produce the wrong version metadata.
         fetch-depth: 0
 
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       with:
         python-version: '3.12'
 
-    - name: Install package + PyInstaller
+    - name: Install package + release tooling
       run: |
         python -m pip install --upgrade pip
         pip install .
-        pip install pyinstaller
+        pip install -r requirements/release.txt
 
     - name: Build standalone GUI binary
       run: pyinstaller --windowed --onefile --name antenati_gui src/antenati/gui/__main__.py
 
+    - name: Generate SBOM
+      run: cyclonedx-py environment -o antenati_gui.cdx.json
+
     - name: Upload artifact for Windows
       if: runner.os == 'Windows'
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: antenati_gui_windows.exe
         path: dist/antenati_gui.exe
 
     - name: Upload artifact for macOS and Ubuntu
       if: runner.os != 'Windows'
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: antenati_gui_${{ matrix.runs-on }}
         path: dist/antenati_gui
+
+    - name: Upload SBOM for Windows
+      if: runner.os == 'Windows'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: antenati_gui_windows.cdx.json
+        path: antenati_gui.cdx.json
+
+    - name: Upload SBOM for macOS and Ubuntu
+      if: runner.os != 'Windows'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: antenati_gui_${{ matrix.runs-on }}.cdx.json
+        path: antenati_gui.cdx.json
 
   build-distribution:
     name: Build sdist + wheel
@@ -60,21 +78,22 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
+        persist-credentials: false
         # Keep tags available here as well because the wheel/sdist version is
         # generated from git metadata by hatch-vcs.
         fetch-depth: 0
 
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       with:
         python-version: '3.12'
 
     - name: Install build front-end
       run: |
         python -m pip install --upgrade pip
-        pip install build
+        pip install -r requirements/release.txt
 
     - name: Build sdist and wheel
       run: python -m build
@@ -87,7 +106,7 @@ jobs:
         echo "Built antenati $version"
 
     - name: Upload distribution artifact
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: dist
         path: dist/*
@@ -108,13 +127,13 @@ jobs:
       id-token: write
     steps:
     - name: Download distribution artifact
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: dist
         path: dist
 
     - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   create-github-release:
     name: Create GitHub release
@@ -125,10 +144,12 @@ jobs:
       contents: write
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      with:
+        persist-credentials: false
 
     - name: Download GUI artifacts
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         path: artifacts
         pattern: antenati_gui_*
@@ -146,6 +167,12 @@ jobs:
             artifacts/antenati_gui_macos-14/antenati_gui
         zip -j release-assets/antenati_gui_ubuntu-22.04.zip \
             artifacts/antenati_gui_ubuntu-22.04/antenati_gui
+        cp artifacts/antenati_gui_windows.cdx.json/antenati_gui.cdx.json \
+            release-assets/antenati_gui_windows.cdx.json
+        cp artifacts/antenati_gui_macos-14.cdx.json/antenati_gui.cdx.json \
+            release-assets/antenati_gui_macos-14.cdx.json
+        cp artifacts/antenati_gui_ubuntu-22.04.cdx.json/antenati_gui.cdx.json \
+            release-assets/antenati_gui_ubuntu-22.04.cdx.json
 
     - name: Verify Unix executable modes in release archives
       run: |
@@ -169,6 +196,9 @@ jobs:
           --notes-file release-notes.md \
           release-assets/antenati_gui_windows.exe.zip \
           release-assets/antenati_gui_macos-14.zip \
-          release-assets/antenati_gui_ubuntu-22.04.zip
+          release-assets/antenati_gui_ubuntu-22.04.zip \
+          release-assets/antenati_gui_windows.cdx.json \
+          release-assets/antenati_gui_macos-14.cdx.json \
+          release-assets/antenati_gui_ubuntu-22.04.cdx.json
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

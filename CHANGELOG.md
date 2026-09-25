@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The GUI destination model now separates a fixed absolute base directory from the metadata-derived register folder: automatic per-register subfolders never replace the base path, preventing confusing apparent nesting between consecutive downloads; direct-to-folder mode and Open folder remain available (#79)
 - GUI status text and register-folder display are width-stable: long destination paths no longer resize the application window between downloads (#79)
 - Package description, About box and CLI help now read "Download image galleries from the Portale Antenati"; the copyright year is aligned to 2018 everywhere
+- Runtime dependency constraints (`rich`, `python-slugify`, `requests`) now allow currently supported patch/minor releases instead of pinning to a single already-superseded line (#58)
+
+### Security
+- Third-party GitHub Actions are pinned to immutable commit SHAs (with the corresponding release tag as a comment) instead of mutable version tags (#58)
+- Dependabot keeps GitHub Actions and Python dependencies (runtime, dev and release tooling) up to date with weekly, grouped pull requests (#58)
+- CI runs `pip-audit` against runtime and release-tooling dependencies on every push/PR and on a weekly schedule (#58)
+- Release builds pin their build/packaging tooling (`build`, `pyinstaller`, `cyclonedx-bom`) to exact versions and attach a CycloneDX SBOM alongside each PyInstaller executable in GitHub releases (#58)
 
 ### Fixed
 - Reject unsupported media types, HTML/text responses, corrupt image data and MIME/signature mismatches before a final image file is committed (#47)

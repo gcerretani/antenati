@@ -16,6 +16,15 @@ Each downloaded image's declared media type and file signature are checked befor
 
 The per-image SHA-256 recorded in `.antenati-index.json` (see [README.md](https://github.com/gcerretani/antenati/blob/master/README.md#output-files-and-resume)) lets a later run detect that a local file has changed or is corrupt before reusing it. It is a local-integrity check, not a cryptographic authentication of the data the remote archive served in the first place.
 
+## Supply chain
+
+- Third-party GitHub Actions used in CI/CD are pinned to immutable commit SHAs, with the corresponding release tag kept as a comment.
+- [Dependabot](https://github.com/gcerretani/antenati/blob/master/.github/dependabot.yml) opens weekly, grouped pull requests for GitHub Actions and Python dependencies (runtime, dev and release tooling).
+- CI runs [`pip-audit`](https://github.com/gcerretani/antenati/blob/master/.github/workflows/security.yml) against runtime and release-tooling dependencies on every push/PR and on a weekly schedule, so known vulnerable dependencies fail the build.
+- Release build/packaging tooling (`build`, `pyinstaller`, `cyclonedx-bom`) is pinned to exact versions in `requirements/release.txt`.
+- Each PyInstaller executable published in a GitHub release is accompanied by a CycloneDX SBOM (`.cdx.json`) describing its Python dependency tree.
+- PyPI publication uses [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC); no long-lived PyPI API token is stored in repository secrets.
+
 ## Reporting a vulnerability
 
 Please report security issues privately via a [GitHub security advisory](https://github.com/gcerretani/antenati/security/advisories/new) rather than a public issue. If that's not available to you, open an issue on the [issue tracker](https://github.com/gcerretani/antenati/issues) without including exploit details, and we'll follow up privately.

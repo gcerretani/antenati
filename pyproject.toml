@@ -34,10 +34,10 @@ classifiers = [
     "Topic :: Multimedia :: Graphics",
 ]
 dependencies = [
-    "rich>=14,<15",
+    "rich>=14,<16",
     "typer>=0.27,<1",
-    "python-slugify~=8.0.4",
-    "requests~=2.32.5",
+    "python-slugify>=8.0.4,<10",
+    "requests>=2.32.5,<3",
 ]
 dynamic = ["version"]
 

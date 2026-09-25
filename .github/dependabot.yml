@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  - package-ecosystem: 'pip'
+    directory: '/'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      runtime:
+        dependency-type: 'production'
+      dev-and-build:
+        dependency-type: 'development'
+
+  - package-ecosystem: 'pip'
+    directory: '/requirements'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      release-tooling:
+        patterns: ['*']
