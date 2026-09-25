@@ -56,6 +56,8 @@ pip install -e ".[dev]"
 
 Activate the virtual environment using the command appropriate for your operating system, then run `antenati` or `antenati-gui`. This method is intended for development and testing; normal users should prefer a release executable or PyPI.
 
+Pull requests to `master` require the **CI passed** check (offline lint and test matrix) before they can be merged. The live-download canary and dependency security scan run on every push too, but are informational and don't block merging.
+
 ## Quick start
 
 ### 1. Find the register on the portal

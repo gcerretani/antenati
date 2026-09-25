@@ -1,4 +1,15 @@
 name: Release
+#
+# Publication order and failure policy:
+#   tests + security -> build-distribution + pyinstaller -> draft-github-release
+#     -> publish-pypi -> publish-github-release -> release-summary
+#
+# The GitHub release is created as a draft *before* PyPI publication and only
+# made public after PyPI succeeds, so a failure never leaves a public GitHub
+# release without a matching PyPI release. If PyPI publication itself fails,
+# only an unpublished draft exists (visible to maintainers, not to users). If
+# the final "undraft" step fails after PyPI succeeded, release-summary detects
+# and loudly reports that partial state.
 
 on:
   workflow_dispatch:
@@ -10,13 +21,38 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    name: Tests
+    uses: ./.github/workflows/ci.yml
+
+  security:
+    name: Security
+    uses: ./.github/workflows/security.yml
+
   pyinstaller:
-    name: PyInstaller (${{ matrix.runs-on }})
+    name: PyInstaller (${{ matrix.label }})
+    needs: [tests, security]
     strategy:
       fail-fast: false
       matrix:
-        runs-on: ['ubuntu-22.04', 'macos-14', 'windows-2022']
+        include:
+          - runs-on: windows-2022
+            label: windows
+            exe: antenati_gui.exe
+            zip_name: antenati_gui_windows.exe.zip
+            sbom_name: antenati_gui_windows.cdx.json
+          - runs-on: macos-14
+            label: macos-14
+            exe: antenati_gui
+            zip_name: antenati_gui_macos-14.zip
+            sbom_name: antenati_gui_macos-14.cdx.json
+          - runs-on: ubuntu-22.04
+            label: ubuntu-22.04
+            exe: antenati_gui
+            zip_name: antenati_gui_ubuntu-22.04.zip
+            sbom_name: antenati_gui_ubuntu-22.04.cdx.json
     runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 20
     steps:
     - name: Checkout code
       uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -43,36 +79,63 @@ jobs:
     - name: Generate SBOM
       run: cyclonedx-py environment -o antenati_gui.cdx.json
 
-    - name: Upload artifact for Windows
-      if: runner.os == 'Windows'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: antenati_gui_windows.exe
-        path: dist/antenati_gui.exe
+    - name: Package the executable (preserves Unix permission bits in the zip)
+      run: python -c "import zipfile; zf = zipfile.ZipFile('${{ matrix.zip_name }}', 'w', zipfile.ZIP_DEFLATED); zf.write('dist/${{ matrix.exe }}', arcname='${{ matrix.exe }}'); zf.close()"
 
-    - name: Upload artifact for macOS and Ubuntu
+    - name: Extract archive and smoke test the executable (Linux/macOS)
       if: runner.os != 'Windows'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: antenati_gui_${{ matrix.runs-on }}
-        path: dist/antenati_gui
+      run: |
+        rm -rf smoke-test
+        python -m zipfile -e ${{ matrix.zip_name }} smoke-test
+        test -x smoke-test/${{ matrix.exe }}
+        version=$(smoke-test/${{ matrix.exe }} --version)
+        test -n "$version"
+        echo "Reported version: $version"
+        if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag_version" ]; then
+            echo "::error::Packaged executable reports version $version but the tag is $GITHUB_REF_NAME"
+            exit 1
+          fi
+        fi
 
-    - name: Upload SBOM for Windows
+    - name: Extract archive and smoke test the executable (Windows)
       if: runner.os == 'Windows'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: antenati_gui_windows.cdx.json
-        path: antenati_gui.cdx.json
+      shell: pwsh
+      run: |
+        Remove-Item -Recurse -Force smoke-test -ErrorAction SilentlyContinue
+        Expand-Archive -Path ${{ matrix.zip_name }} -DestinationPath smoke-test
+        $proc = Start-Process -FilePath "smoke-test\${{ matrix.exe }}" -ArgumentList '--version' -Wait -PassThru -NoNewWindow -RedirectStandardOutput smoke-test-out.txt
+        if ($proc.ExitCode -ne 0) {
+          throw "antenati_gui.exe --version exited with code $($proc.ExitCode)"
+        }
+        $version = (Get-Content smoke-test-out.txt -Raw).Trim()
+        if ([string]::IsNullOrEmpty($version)) {
+          throw "antenati_gui.exe --version produced no output"
+        }
+        Write-Host "Reported version: $version"
+        if ("${{ github.ref }}".StartsWith('refs/tags/v')) {
+          $tagVersion = "${{ github.ref_name }}".TrimStart('v')
+          if ($version -ne $tagVersion) {
+            throw "Packaged executable reports version $version but the tag is ${{ github.ref_name }}"
+          }
+        }
 
-    - name: Upload SBOM for macOS and Ubuntu
-      if: runner.os != 'Windows'
+    - name: Upload packaged executable
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: antenati_gui_${{ matrix.runs-on }}.cdx.json
+        name: ${{ matrix.zip_name }}
+        path: ${{ matrix.zip_name }}
+
+    - name: Upload SBOM
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ matrix.sbom_name }}
         path: antenati_gui.cdx.json
 
   build-distribution:
     name: Build sdist + wheel
+    needs: [tests, security]
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -105,18 +168,92 @@ jobs:
         echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "Built antenati $version"
 
+    - name: Smoke test the built wheel
+      run: |
+        python -m venv .wheel-venv
+        .wheel-venv/bin/pip install --quiet dist/*.whl
+        installed=$(.wheel-venv/bin/antenati --version)
+        test "$installed" = "${{ steps.version.outputs.version }}"
+
     - name: Upload distribution artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: dist
         path: dist/*
 
+  draft-github-release:
+    name: Draft GitHub release
+    needs: [pyinstaller, build-distribution]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+    - name: Verify built version matches the pushed tag
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        built="${{ needs.build-distribution.outputs.version }}"
+        if [ "$built" != "$version" ]; then
+          echo "::error::Built package version ($built) does not match tag ($GITHUB_REF_NAME)"
+          exit 1
+        fi
+
+    - name: Checkout code
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      with:
+        persist-credentials: false
+
+    - name: Download distribution artifact
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: dist
+        path: dist
+
+    - name: Download GUI artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        path: artifacts
+        pattern: antenati_gui_*
+
+    - name: Assemble and checksum release assets
+      run: |
+        mkdir -p release-assets
+        cp dist/*.whl dist/*.tar.gz release-assets/
+        cp artifacts/*/*.zip artifacts/*/*.cdx.json release-assets/
+        (cd release-assets && sha256sum -- * > SHA256SUMS)
+        ls -l release-assets
+
+    - name: Extract release notes from CHANGELOG
+      run: |
+        version="${GITHUB_REF_NAME#v}"
+        awk '/^## \['"$version"'\]/{found=1; next} /^## \[/{if(found) exit} found{print}' \
+            CHANGELOG.md > release-notes.md
+
+    - name: Create or update draft GitHub release
+      run: |
+        if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          # Re-run of a workflow that already created (and possibly published)
+          # a release for this tag: refresh its assets/notes and force it
+          # back to draft so publish-github-release un-drafts it only after
+          # PyPI has been re-verified below.
+          gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" --notes-file release-notes.md
+        else
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            release-assets/*
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   publish-pypi:
     name: Publish to PyPI
     # Manual workflow_dispatch runs are useful for validating builds, but must
     # never republish a package version. Publication happens only for v* tags.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-distribution]
+    needs: [build-distribution, draft-github-release]
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -135,70 +272,65 @@ jobs:
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
-  create-github-release:
-    name: Create GitHub release
-    needs: [pyinstaller, build-distribution]
+  publish-github-release:
+    name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-distribution, publish-pypi]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-    - name: Checkout code
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      with:
-        persist-credentials: false
-
-    - name: Download GUI artifacts
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-      with:
-        path: artifacts
-        pattern: antenati_gui_*
-
-    - name: Package release assets
-      run: |
-        mkdir -p release-assets
-        # upload-artifact/download-artifact does not preserve Unix mode bits.
-        # Restore them before zipping so extracted macOS/Linux binaries remain executable.
-        chmod +x artifacts/antenati_gui_macos-14/antenati_gui
-        chmod +x artifacts/antenati_gui_ubuntu-22.04/antenati_gui
-        zip -j release-assets/antenati_gui_windows.exe.zip \
-            artifacts/antenati_gui_windows.exe/antenati_gui.exe
-        zip -j release-assets/antenati_gui_macos-14.zip \
-            artifacts/antenati_gui_macos-14/antenati_gui
-        zip -j release-assets/antenati_gui_ubuntu-22.04.zip \
-            artifacts/antenati_gui_ubuntu-22.04/antenati_gui
-        cp artifacts/antenati_gui_windows.cdx.json/antenati_gui.cdx.json \
-            release-assets/antenati_gui_windows.cdx.json
-        cp artifacts/antenati_gui_macos-14.cdx.json/antenati_gui.cdx.json \
-            release-assets/antenati_gui_macos-14.cdx.json
-        cp artifacts/antenati_gui_ubuntu-22.04.cdx.json/antenati_gui.cdx.json \
-            release-assets/antenati_gui_ubuntu-22.04.cdx.json
-
-    - name: Verify Unix executable modes in release archives
-      run: |
-        rm -rf verify-macos verify-linux
-        mkdir verify-macos verify-linux
-        unzip -q release-assets/antenati_gui_macos-14.zip -d verify-macos
-        unzip -q release-assets/antenati_gui_ubuntu-22.04.zip -d verify-linux
-        test -x verify-macos/antenati_gui
-        test -x verify-linux/antenati_gui
-
-    - name: Extract release notes from CHANGELOG
-      run: |
-        version="${GITHUB_REF_NAME#v}"
-        awk '/^## \['"$version"'\]/{found=1; next} /^## \[/{if(found) exit} found{print}' \
-            CHANGELOG.md > release-notes.md
-
-    - name: Create GitHub release
-      run: |
-        gh release create "$GITHUB_REF_NAME" \
-          --title "$GITHUB_REF_NAME" \
-          --notes-file release-notes.md \
-          release-assets/antenati_gui_windows.exe.zip \
-          release-assets/antenati_gui_macos-14.zip \
-          release-assets/antenati_gui_ubuntu-22.04.zip \
-          release-assets/antenati_gui_windows.cdx.json \
-          release-assets/antenati_gui_macos-14.cdx.json \
-          release-assets/antenati_gui_ubuntu-22.04.cdx.json
+    - name: Un-draft the GitHub release
+      run: gh release edit "$GITHUB_REF_NAME" --draft=false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Verify the version is live on PyPI
+      run: |
+        version="${{ needs.build-distribution.outputs.version }}"
+        for attempt in 1 2 3 4 5; do
+          if curl -fsS "https://pypi.org/pypi/antenati/$version/json" >/dev/null; then
+            echo "antenati $version is live on PyPI"
+            exit 0
+          fi
+          echo "PyPI does not yet report antenati $version (attempt $attempt/5), retrying..."
+          sleep 15
+        done
+        echo "::error::antenati $version was published but is not visible on PyPI after retries"
+        exit 1
+
+  release-summary:
+    name: Release summary
+    if: always() && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-distribution, pyinstaller, draft-github-release, publish-pypi, publish-github-release]
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Report publication status
+      run: |
+        {
+          echo "| Stage | Result |"
+          echo "|---|---|"
+          echo "| Build sdist/wheel | ${{ needs.build-distribution.result }} |"
+          echo "| Build PyInstaller executables | ${{ needs.pyinstaller.result }} |"
+          echo "| Draft GitHub release | ${{ needs.draft-github-release.result }} |"
+          echo "| Publish to PyPI | ${{ needs.publish-pypi.result }} |"
+          echo "| Publish GitHub release | ${{ needs.publish-github-release.result }} |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        pypi="${{ needs.publish-pypi.result }}"
+        ghrelease="${{ needs.publish-github-release.result }}"
+        version="${{ needs.build-distribution.outputs.version }}"
+
+        if [ "$pypi" = "success" ] && [ "$ghrelease" != "success" ]; then
+          echo "::error::PARTIAL PUBLICATION: antenati $version was published to PyPI, but the GitHub release was not published (still draft or the un-draft step failed). Investigate and publish it manually with: gh release edit $GITHUB_REF_NAME --draft=false"
+          exit 1
+        fi
+        if [ "$ghrelease" = "success" ] && [ "$pypi" != "success" ]; then
+          echo "::error::PARTIAL PUBLICATION: the GitHub release for antenati $version was published, but PyPI publication did not succeed."
+          exit 1
+        fi
+        if [ "$pypi" != "success" ] || [ "$ghrelease" != "success" ]; then
+          echo "Release publication did not complete; see the jobs above for details."
+          exit 1
+        fi
+        echo "antenati $version was published successfully to both PyPI and GitHub Releases."

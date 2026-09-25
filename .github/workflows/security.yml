@@ -9,6 +9,7 @@ on:
     # Weekly canary so newly disclosed CVEs are caught even without a code change.
     - cron: '17 6 * * 1'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

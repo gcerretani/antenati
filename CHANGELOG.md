@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explicit **Maximum size** checkbox in the GUI instead of the implicit `0` size value
 - GUI register preview: leaving the URL field (or pressing Enter) loads the register metadata in the background and shows the same card as the CLI (title, type, dates, archive, clickable links, page count) in a fixed-size side panel that never resizes the window, fills in the register folder name before downloading, and reports invalid URLs inline
 - Ko-fi support link with a ♥ in the GUI (button and File menu), in the CLI wizard banner and in `--help`; the CLI falls back to ASCII (`<3`, `OK`, `--`) for ♥/✓/■ on consoles whose encoding cannot represent them (e.g. cp1252), instead of crashing
+- `antenati-gui --version` / `python -m antenati.gui --version` print the version and exit without opening a window, enabling headless smoke tests of the packaged executable (#57)
 
 ### Changed
 - **Breaking:** `Downloader.run()` no longer raises automatically for partial page failures; it returns `DownloadReport` and callers must inspect `report.successful`/`report.failed`, or opt in to `strict=True` for exception-based handling (#60, #75)
@@ -43,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependabot keeps GitHub Actions and Python dependencies (runtime, dev and release tooling) up to date with weekly, grouped pull requests (#58)
 - CI runs `pip-audit` against runtime and release-tooling dependencies on every push/PR and on a weekly schedule (#58)
 - Release builds pin their build/packaging tooling (`build`, `pyinstaller`, `cyclonedx-bom`) to exact versions and attach a CycloneDX SBOM alongside each PyInstaller executable in GitHub releases (#58)
+- Pull requests to `master` require the offline lint/test CI job to pass before merging (#55)
+- Release publication now runs the full offline test suite and dependency audit before building, builds the sdist/wheel and the three PyInstaller executables from that single verified commit, and only proceeds to PyPI/GitHub Release publication if everything succeeded; the GitHub release is created as a draft and made public only after PyPI publication succeeds, and a final check fails loudly if the two ever end up out of sync (#56)
+- Linux/macOS PyInstaller executables are zipped (preserving the executable permission bit) before upload instead of after download, and each archive is extracted and its `--version` output verified in CI before being published, so the distributed binaries are known to run rather than merely known to exist (#57)
 
 ### Fixed
 - Reject unsupported media types, HTML/text responses, corrupt image data and MIME/signature mismatches before a final image file is committed (#47)
