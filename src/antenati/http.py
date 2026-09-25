@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from email.message import Message
 from enum import Enum
+from importlib.metadata import PackageNotFoundError, version
 from ipaddress import ip_address
 from urllib.parse import urljoin, urlsplit
 
@@ -33,7 +34,19 @@ READ_TIMEOUT_SECONDS: float = 60.0
 DEFAULT_TIMEOUT: tuple[float, float] = (CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS)
 
 _PUBLIC_PORTAL_HOST: str = 'antenati.cultura.gov.it'
-_USER_AGENT: str = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
+
+
+def _antenati_version() -> str:
+    try:
+        return version('antenati')
+    except PackageNotFoundError:
+        return '0.0.0+local'
+
+
+# Self-identifying, in the same "Mozilla/5.0 (compatible; ...)" form well-behaved
+# bots (e.g. Googlebot) use. The portal's edge only checks for a leading
+# "Mozilla/5.0" token, so this is honest without losing access.
+_USER_AGENT: str = f'Mozilla/5.0 (compatible; antenati/{_antenati_version()}; +https://github.com/gcerretani/antenati)'
 _REFERER: str = f'https://{_PUBLIC_PORTAL_HOST}/'
 
 
