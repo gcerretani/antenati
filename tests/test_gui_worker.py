@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,10 @@ from antenati.gui.worker import (
     ExistingOutput,
     Failed,
     Phase,
+    PreviewFailed,
+    PreviewLoader,
     Progress,
+    RegisterPreview,
     Tick,
 )
 from antenati.output import ExistingPolicy
@@ -257,3 +261,60 @@ def test_automatic_output_never_uses_previous_register_as_base(tmp_path: Path) -
     destination = next(event for event in events if isinstance(event, Destination))
     assert destination.path == str((base / 'next-register').resolve())
     assert destination.path != str((previous / 'next-register').resolve())
+
+
+class _PreviewFake:
+    def __init__(self, dirname: str = 'register-dir') -> None:
+        self.dirname = Path(dirname)
+        self.manifest = {'metadata': [{'label': 'Tipologia', 'value': '<b>Nati</b>'}]}
+        self.gallery_length = 15
+
+    def load(self):
+        return self
+
+
+def _next_preview_event(loader: PreviewLoader, timeout: float = 2.0) -> Any:
+    return loader.events.get(timeout=timeout)
+
+
+def test_preview_loader_reports_metadata_pages_and_dirname() -> None:
+    loader = PreviewLoader(factory=lambda url, first, last, descriptive_names=False: _PreviewFake())
+    loader.request('https://example.org/gallery')
+
+    event = _next_preview_event(loader)
+
+    assert event == RegisterPreview(
+        url='https://example.org/gallery',
+        metadata=(('Tipologia', 'Nati'),),
+        pages=15,
+        dirname='register-dir',
+    )
+
+
+def test_preview_loader_reports_failures_as_events() -> None:
+    def factory(url, first, last, descriptive_names=False):
+        raise ValueError('not a Portale Antenati URL')
+
+    loader = PreviewLoader(factory=factory)
+    loader.request('https://example.org/nope')
+
+    assert _next_preview_event(loader) == PreviewFailed(url='https://example.org/nope', message='not a Portale Antenati URL')
+
+
+def test_preview_loader_drops_results_for_superseded_urls() -> None:
+    release_slow = threading.Event()
+
+    def factory(url, first, last, descriptive_names=False):
+        if url.endswith('slow'):
+            release_slow.wait(timeout=2.0)
+            return _PreviewFake('slow-dir')
+        return _PreviewFake('fast-dir')
+
+    loader = PreviewLoader(factory=factory)
+    loader.request('https://example.org/slow')
+    loader.request('https://example.org/fast')
+
+    assert _next_preview_event(loader).dirname == 'fast-dir'
+    release_slow.set()
+    with pytest.raises(queue.Empty):
+        loader.events.get(timeout=0.3)

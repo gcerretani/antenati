@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional `strict=True` programmatic download mode that raises `DownloadFailedError` while retaining the structured report on the exception (#75)
 - Modern Typer/Rich command-line interface with a TTY-only guided wizard, cleaned metadata cards, loading status, structured progress/report panels and focused debug diagnostics (#79)
 - Versioned machine-readable `--format json` output for both downloads and dry-run plans, with stdout kept free of Rich/progress rendering (#79)
+- GUI and CLI interface localised in English, Italian, French and Spanish, following the system language, with an `ANTENATI_LANG` override; option names, policy keywords, JSON output and core error messages stay in English
+- Explicit **Maximum size** checkbox in the GUI instead of the implicit `0` size value
+- GUI register preview: leaving the URL field (or pressing Enter) loads the register metadata in the background and shows the same card as the CLI (title, type, dates, archive, clickable links, page count) in a fixed-size side panel that never resizes the window, fills in the register folder name before downloading, and reports invalid URLs inline
+- Ko-fi support link with a ♥ in the GUI (button and File menu), in the CLI wizard banner and in `--help`; the CLI falls back to ASCII (`<3`, `OK`, `--`) for ♥/✓/■ on consoles whose encoding cannot represent them (e.g. cp1252), instead of crashing
 
 ### Changed
 - **Breaking:** `Downloader.run()` no longer raises automatically for partial page failures; it returns `DownloadReport` and callers must inspect `report.successful`/`report.failed`, or opt in to `strict=True` for exception-based handling (#60, #75)
@@ -31,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GUI progress now distinguishes manifest/planning phases with an indeterminate animation before switching to determinate per-page progress (#79)
 - The GUI destination model now separates a fixed absolute base directory from the metadata-derived register folder: automatic per-register subfolders never replace the base path, preventing confusing apparent nesting between consecutive downloads; direct-to-folder mode and Open folder remain available (#79)
 - GUI status text and register-folder display are width-stable: long destination paths no longer resize the application window between downloads (#79)
+- Package description, About box and CLI help now read "Download image galleries from the Portale Antenati"; the copyright year is aligned to 2018 everywhere
 
 ### Fixed
 - Reject unsupported media types, HTML/text responses, corrupt image data and MIME/signature mismatches before a final image file is committed (#47)

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from html.parser import HTMLParser
+from typing import Any
 
 
 class _PlainTextHTMLParser(HTMLParser):
@@ -33,3 +34,16 @@ def plain_text(value: object) -> str:
     parser.feed(str(value))
     parser.close()
     return ' '.join(''.join(parser.parts).split())
+
+
+def metadata_rows(manifest: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return the manifest's descriptive metadata as cleaned ``(label, value)`` pairs, skipping empty entries."""
+    rows: list[tuple[str, str]] = []
+    for entry in manifest.get('metadata', []):
+        if not isinstance(entry, dict):
+            continue
+        label = plain_text(entry.get('label', ''))
+        value = plain_text(entry.get('value', ''))
+        if label or value:
+            rows.append((label, value))
+    return rows

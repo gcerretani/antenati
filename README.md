@@ -154,9 +154,9 @@ antenati-gui
 
 ![GUI Screenshot](https://raw.githubusercontent.com/gcerretani/antenati/master/docs/gui_screenshot.png)
 
-Paste a gallery or manifest URL, then set:
+Paste a gallery or manifest URL. When you leave the field (or press Enter), the **Register** panel on the right shows the register's metadata and page count, so you can check it is the right one before downloading. Then set:
 
-- **Size (px)** — `0` requests full resolution.
+- **Size (px)** / **Maximum size** — keep **Maximum size** checked (the default) for full resolution, or clear it to choose a pixel size.
 - **First page** / **Last page** — zero-based; **Last page** is excluded.
 - **Workers** — concurrent image downloads.
 - **Filenames** — include archive/image IDs.
@@ -165,6 +165,10 @@ Paste a gallery or manifest URL, then set:
 The **Destination** panel keeps a fixed **Save in** base folder. With **Create a separate folder for each register** enabled (the default), each register gets its own metadata-derived subfolder without the base path ever changing, so consecutive downloads land side by side instead of nesting into each other. Use **Change…** to pick another base folder, or clear the checkbox to save directly into the selected folder.
 
 The desktop app runs the same download engine, validation and reporting as the command line, except for the `--dry-run` preview, which is CLI-only for now.
+
+## Language
+
+The desktop app and the command line follow your system language: English, Italian, French or Spanish, with English for any other language. To force a language, set `ANTENATI_LANG` (for example `ANTENATI_LANG=it`). Option names, policy keywords such as `resume`, `--format json` output and technical error messages always stay in English.
 
 ## Output files and resume
 

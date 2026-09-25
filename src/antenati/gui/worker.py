@@ -13,6 +13,8 @@ from typing import Protocol
 
 from antenati.config import DownloadConfig
 from antenati.downloader import Downloader, DownloadReport, ProgressBar
+from antenati.formatting import metadata_rows
+from antenati.i18n import _
 from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
 
 logger = logging.getLogger(__name__)
@@ -149,7 +151,7 @@ class DownloadWorker:
     def _run(self, params: DownloadParams) -> None:
         try:
             params.validate()
-            self.events.put(Phase('Loading register metadata…'))
+            self.events.put(Phase(_('Loading register metadata…')))
             downloader = self._factory(params.url, params.first, params.last, params.descriptive_names)
             downloader.load()
 
@@ -165,7 +167,7 @@ class DownloadWorker:
                 self.events.put(Cancelled(report=self._cancelled_report(downloader)))
                 return
 
-            self.events.put(Phase('Preparing output…'))
+            self.events.put(Phase(_('Preparing output…')))
             prepare_output(downloader, directory, policy)
 
             completed = 0
@@ -179,7 +181,7 @@ class DownloadWorker:
                 set_total=lambda total: self.events.put(Progress(total=total)),
                 update=tick,
             )
-            self.events.put(Phase('Planning download…'))
+            self.events.put(Phase(_('Planning download…')))
             report = run_with_policy(
                 downloader,
                 n_workers=params.n_workers,
@@ -197,3 +199,66 @@ class DownloadWorker:
             self.events.put(Cancelled(report=report))
         else:
             self.events.put(Done(report=report))
+
+
+@dataclass(frozen=True)
+class RegisterPreview:
+    url: str
+    metadata: tuple[tuple[str, str], ...]
+    pages: int
+    dirname: str
+
+
+@dataclass(frozen=True)
+class PreviewFailed:
+    url: str
+    message: str
+
+
+PreviewEvent = RegisterPreview | PreviewFailed
+
+
+class PreviewLoader:
+    """Load register metadata in the background so the GUI can show it before downloading.
+
+    Each request runs on its own daemon thread; results for a URL that is no
+    longer the latest request are dropped so a slow reply never overwrites a
+    newer one.
+    """
+
+    def __init__(self, factory: DownloaderFactory = _default_factory) -> None:
+        self._factory = factory
+        self.events: queue.Queue[PreviewEvent] = queue.Queue()
+        self._lock = threading.Lock()
+        self._latest: str | None = None
+
+    @property
+    def latest(self) -> str | None:
+        with self._lock:
+            return self._latest
+
+    def request(self, url: str) -> None:
+        with self._lock:
+            self._latest = url
+        threading.Thread(target=self._run, args=(url,), name='antenati-preview', daemon=True).start()
+
+    def clear(self) -> None:
+        with self._lock:
+            self._latest = None
+
+    def _run(self, url: str) -> None:
+        try:
+            downloader = self._factory(url, 0, None).load()
+            event: PreviewEvent = RegisterPreview(
+                url=url,
+                metadata=tuple(metadata_rows(downloader.manifest)),
+                pages=downloader.gallery_length,
+                dirname=downloader.dirname.name,
+            )
+        except Exception as ex:
+            logger.info('Register preview failed for %s: %s', url, ex)
+            event = PreviewFailed(url=url, message=str(ex))
+        with self._lock:
+            if url != self._latest:
+                return
+        self.events.put(event)

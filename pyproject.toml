@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "antenati"
-description = "Download data from the Portale Antenati, the italian state genealogy archive"
+description = "Download image galleries from the Portale Antenati, the Italian state genealogy archive"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.10"
@@ -19,7 +19,9 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Natural Language :: English",
+    "Natural Language :: French",
     "Natural Language :: Italian",
+    "Natural Language :: Spanish",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",

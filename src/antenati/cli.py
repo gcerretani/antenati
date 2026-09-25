@@ -15,10 +15,11 @@ import typer
 from requests import RequestException
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 
-from antenati import __copyright__, __version__, cli_json, cli_ui
+from antenati import __copyright__, __support__, __version__, cli_json, cli_ui
 from antenati.config import DownloadConfig
 from antenati.downloader import DEFAULT_N_THREADS, DEFAULT_SIZE, Downloader, DownloadItem, DownloadReport, ProgressBar
 from antenati.errors import AntenatiError
+from antenati.i18n import _
 from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, planned_path, prepare_output, run_with_policy
 
 
@@ -29,10 +30,11 @@ class OutputFormat(str, Enum):
     JSON = 'json'
 
 
+_EPILOG = f'{__copyright__} · {cli_ui.symbol("♥", "<3")} {_("Support this project")}: {__support__}'
+
 app = typer.Typer(
     add_completion=False,
-    help='Download data from the Portale Antenati.',
-    epilog=__copyright__,
+    help=_('Download image galleries from the Portale Antenati'),
     no_args_is_help=False,
     rich_markup_mode='rich',
     context_settings={'help_option_names': ['-h', '--help']},
@@ -84,7 +86,7 @@ def run_cli(
         nonlocal task_id
         if task_id is None:
             progress.start()
-            task_id = progress.add_task('Downloading', total=total)
+            task_id = progress.add_task(_('Downloading'), total=total)
         else:
             progress.update(task_id, total=total)
 
@@ -123,17 +125,22 @@ def _resolve_cli_policy(
 
     directory = output_directory(downloader, output)
     if not allow_prompt:
-        raise RuntimeError(f'Output directory already exists and is not empty: {directory}. Choose an explicit --existing policy when using --format json.')
+        raise RuntimeError(
+            _(
+                'Output directory already exists and is not empty: {directory}. Choose an explicit --existing policy when using --format json.',
+                directory=directory,
+            )
+        )
 
     cli_ui.render_existing_output(directory)
     choices = {item.value for item in (ExistingPolicy.RESUME, ExistingPolicy.OVERWRITE, ExistingPolicy.SKIP)}
     while True:
-        selected = typer.prompt('Policy', default='resume', show_default=True).strip().lower()
+        selected = typer.prompt(_('Policy'), default='resume', show_default=True).strip().lower()
         if selected == 'cancel':
             raise typer.Exit(code=1)
         if selected in choices:
             return ExistingPolicy(selected)
-        typer.echo('Choose one of: resume, overwrite, skip, cancel.', err=True)
+        typer.echo(_('Choose one of: resume, overwrite, skip, cancel.'), err=True)
 
 
 def _is_interactive_terminal() -> bool:
@@ -145,42 +152,42 @@ def _prompt_int(label: str, default: int, *, minimum: int = 0) -> int:
         value = typer.prompt(label, default=default, type=int)
         if value >= minimum:
             return value
-        typer.echo(f'Value must be >= {minimum}.', err=True)
+        typer.echo(_('Value must be >= {minimum}.', minimum=minimum), err=True)
 
 
 def _run_wizard(*, show_status: bool = True) -> tuple[DownloadConfig, Downloader | None]:
     if not _is_interactive_terminal():
-        raise typer.BadParameter('URL is required outside an interactive terminal.', param_hint='URL')
+        raise typer.BadParameter(_('URL is required outside an interactive terminal.'), param_hint='URL')
 
     cli_ui.render_banner()
-    url = typer.prompt('Gallery or manifest URL').strip()
+    url = typer.prompt(_('Gallery or manifest URL')).strip()
     downloader = Downloader(url, 0, None)
-    with cli_ui.loading('Loading register metadata…', enabled=show_status):
+    with cli_ui.loading(_('Loading register metadata…'), enabled=show_status):
         downloader.load()
 
     cli_ui.render_register(downloader.manifest, downloader.gallery_length)
 
-    selection = typer.prompt('Pages [all/range]', default='all').strip().lower()
+    selection = typer.prompt(_('Pages [all/range]'), default='all').strip().lower()
     if selection == 'range':
-        first = _prompt_int('First image (0-based)', 0)
-        last_value = _prompt_int('Last image (exclusive)', downloader.gallery_length, minimum=first + 1)
+        first = _prompt_int(_('First image (0-based)'), 0)
+        last_value = _prompt_int(_('Last image (exclusive)'), downloader.gallery_length, minimum=first + 1)
         last: int | None = last_value
     else:
         first = 0
         last = None
 
-    size_choice = typer.prompt('Image size [full/3000/2000/1000/custom]', default='full').strip().lower()
+    size_choice = typer.prompt(_('Image size [full/3000/2000/1000/custom]'), default='full').strip().lower()
     if size_choice == 'full':
         size = 0
     elif size_choice in {'3000', '2000', '1000'}:
         size = int(size_choice)
     elif size_choice == 'custom':
-        size = _prompt_int('Image size in pixels', 2000, minimum=1)
+        size = _prompt_int(_('Image size in pixels'), 2000, minimum=1)
     else:
-        raise typer.BadParameter('Choose full, 3000, 2000, 1000, or custom.', param_hint='image size')
+        raise typer.BadParameter(_('Choose full, 3000, 2000, 1000, or custom.'), param_hint=_('image size'))
 
     default_output = str(downloader.dirname)
-    output_text = typer.prompt('Output directory', default=default_output).strip()
+    output_text = typer.prompt(_('Output directory'), default=default_output).strip()
     output_dir = output_text or default_output
 
     existing = ExistingPolicy.ASK
@@ -188,15 +195,15 @@ def _run_wizard(*, show_status: bool = True) -> tuple[DownloadConfig, Downloader
     if directory.exists() and directory.is_dir() and any(directory.iterdir()):
         cli_ui.render_existing_output(directory)
         while True:
-            selected = typer.prompt('Policy', default='resume').strip().lower()
+            selected = typer.prompt(_('Policy'), default='resume').strip().lower()
             if selected == 'cancel':
                 raise typer.Exit(code=1)
             if selected in {ExistingPolicy.RESUME.value, ExistingPolicy.OVERWRITE.value, ExistingPolicy.SKIP.value}:
                 existing = ExistingPolicy(selected)
                 break
-            typer.echo('Choose one of: resume, overwrite, skip, cancel.', err=True)
+            typer.echo(_('Choose one of: resume, overwrite, skip, cancel.'), err=True)
 
-    if not typer.confirm('Start download?', default=True):
+    if not typer.confirm(_('Start download?'), default=True):
         raise typer.Exit(code=1)
 
     config = DownloadConfig(
@@ -213,28 +220,30 @@ def _run_wizard(*, show_status: bool = True) -> tuple[DownloadConfig, Downloader
     return config, downloader if first == 0 and last is None else None
 
 
-@app.command()
+@app.command(help=_('Download image galleries from the Portale Antenati'), epilog=_EPILOG)
 def cli(
-    url: Annotated[str | None, typer.Argument(help='URL of the gallery page or its IIIF manifest')] = None,
-    size: Annotated[int, typer.Option('-s', '--size', help='Image size in pixels; 0 means full size')] = DEFAULT_SIZE,
+    url: Annotated[str | None, typer.Argument(help=_('URL of the gallery page or its IIIF manifest'))] = None,
+    size: Annotated[int, typer.Option('-s', '--size', help=_('Image size in pixels; 0 means full size'))] = DEFAULT_SIZE,
     workers: Annotated[
         int,
-        typer.Option('-n', '--workers', '--nthreads', help='Maximum number of concurrent download workers (--nthreads is a deprecated alias)'),
+        typer.Option('-n', '--workers', '--nthreads', help=_('Maximum number of concurrent download workers (--nthreads is a deprecated alias)')),
     ] = DEFAULT_N_THREADS,
-    first: Annotated[int, typer.Option('-f', '--first', help='First image to download')] = 0,
-    last: Annotated[int | None, typer.Option('-l', '--last', help='Exclusive end index: first image NOT to download')] = None,
-    descriptive_names: Annotated[bool, typer.Option('-d', '--descriptive-names', help='Include archive and image IDs in saved file names')] = False,
-    output: Annotated[Path | None, typer.Option('-o', '--output', help='Exact output directory (default: generated archive directory)')] = None,
-    existing: Annotated[ExistingPolicy, typer.Option('--existing', help='How to handle an existing output directory')] = ExistingPolicy.ASK,
-    dry_run: Annotated[bool, typer.Option('--dry-run', help='Show the resolved download plan without writing image files')] = False,
-    output_format: Annotated[OutputFormat, typer.Option('--format', help='Output format: text or machine-readable JSON')] = OutputFormat.TEXT,
-    version: Annotated[bool | None, typer.Option('-V', '--version', callback=_version_callback, is_eager=True, help='Show version and exit')] = None,
-    verbose: Annotated[int, typer.Option('-v', '--verbose', count=True, help='Increase logging verbosity; repeat for DEBUG logging and full tracebacks')] = 0,
+    first: Annotated[int, typer.Option('-f', '--first', help=_('First image to download'))] = 0,
+    last: Annotated[int | None, typer.Option('-l', '--last', help=_('Exclusive end index: first image NOT to download'))] = None,
+    descriptive_names: Annotated[bool, typer.Option('-d', '--descriptive-names', help=_('Include archive and image IDs in saved file names'))] = False,
+    output: Annotated[Path | None, typer.Option('-o', '--output', help=_('Exact output directory (default: generated archive directory)'))] = None,
+    existing: Annotated[ExistingPolicy, typer.Option('--existing', help=_('How to handle an existing output directory'))] = ExistingPolicy.ASK,
+    dry_run: Annotated[bool, typer.Option('--dry-run', help=_('Show the resolved download plan without writing image files'))] = False,
+    output_format: Annotated[OutputFormat, typer.Option('--format', help=_('Output format: text or machine-readable JSON'))] = OutputFormat.TEXT,
+    version: Annotated[bool | None, typer.Option('-V', '--version', callback=_version_callback, is_eager=True, help=_('Show version and exit'))] = None,
+    verbose: Annotated[
+        int, typer.Option('-v', '--verbose', count=True, help=_('Increase logging verbosity; repeat for DEBUG logging and full tracebacks'))
+    ] = 0,
 ) -> None:
-    """Download a gallery/register from Portale Antenati."""
+    """Download an image gallery from the Portale Antenati."""
     json_mode = output_format is OutputFormat.JSON
     if json_mode and url is None:
-        raise typer.BadParameter('URL is required with --format json.', param_hint='URL')
+        raise typer.BadParameter(_('URL is required with --format json.'), param_hint='URL')
 
     _configure_logging(verbose)
     debug_logging = verbose >= 2
@@ -258,7 +267,7 @@ def cli(
 
         downloader = wizard_downloader or Downloader(config.url, config.first, config.last, descriptive_names=config.descriptive_names)
         if wizard_downloader is None:
-            with cli_ui.loading('Loading register metadata…', enabled=not debug_logging and not json_mode):
+            with cli_ui.loading(_('Loading register metadata…'), enabled=not debug_logging and not json_mode):
                 downloader.load()
             if not json_mode:
                 cli_ui.render_register(downloader.manifest, downloader.gallery_length)
@@ -290,7 +299,7 @@ def cli(
             show_progress=not debug_logging and not json_mode,
         )
     except KeyboardInterrupt:
-        cli_ui.render_error('Cancelled by user.')
+        cli_ui.render_error(_('Cancelled by user.'))
         raise typer.Exit(code=130) from None
     except (AntenatiError, RequestException, OSError, RuntimeError, ValueError) as exc:
         if debug_logging:
