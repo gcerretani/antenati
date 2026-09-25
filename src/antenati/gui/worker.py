@@ -1,25 +1,6 @@
 # SPDX-FileCopyrightText: 2018 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Background download worker for the Tk GUI.
-
-The worker runs the entire ``Downloader`` lifecycle (construction, manifest
-fetch, image downloads) on a dedicated ``threading.Thread`` and reports
-back to the main thread by pushing events onto a :class:`queue.Queue`.
-The Tk event loop then polls that queue with ``root.after`` and updates
-the UI without blocking.
-
-Compared to the legacy ``ThreadPoolExecutor(max_workers=1) +
-wait_variable`` pattern this gives us three things:
-
-1. The main loop is never blocked, so the window keeps repainting
-   (and the Cancel button can be clicked) while the download runs.
-2. Exceptions surface cleanly via a ``Failed`` event with the full
-   message; they no longer get swallowed by the ``with`` cleanup.
-3. The whole thing is dependency-free for tests — :func:`run_worker`
-   only needs a ``DownloaderFactory`` callable and a ``ProgressBar`` to
-   pump events into a queue, so unit tests can exercise the state
-   machine without any Tk import.
-"""
+"""Background download worker for the Tk GUI."""
 
 from __future__ import annotations
 
@@ -27,114 +8,257 @@ import logging
 import queue
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
-from antenati.downloader import DEFAULT_N_THREADS, Downloader, ProgressBar
+from antenati.config import DownloadConfig
+from antenati.downloader import Downloader, DownloadReport, ProgressBar
+from antenati.formatting import metadata_rows
+from antenati.i18n import _
+from antenati.output import ExistingPolicy, existing_output_requires_decision, output_directory, prepare_output, run_with_policy
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Progress:
-    """Total work-units have been announced by the downloader."""
+class Phase:
+    message: str
 
+
+@dataclass(frozen=True)
+class Destination:
+    path: str
+
+
+@dataclass(frozen=True)
+class ExistingOutput:
+    path: str
+
+
+@dataclass(frozen=True)
+class Progress:
     total: int
 
 
 @dataclass(frozen=True)
 class Tick:
-    """A single image finished (success or failure)."""
+    completed: int
 
 
 @dataclass(frozen=True)
 class Done:
-    """All images processed; ``total_bytes`` is the cumulative download size."""
-
-    total_bytes: int
+    report: DownloadReport
 
 
 @dataclass(frozen=True)
 class Cancelled:
-    """The user clicked Cancel and the worker honoured the request."""
+    report: DownloadReport
 
 
 @dataclass(frozen=True)
 class Failed:
-    """The worker hit an unrecoverable error before completing."""
-
     message: str
 
 
-WorkerEvent = Progress | Tick | Done | Cancelled | Failed
+WorkerEvent = Phase | Destination | ExistingOutput | Progress | Tick | Done | Cancelled | Failed
 
 
 @dataclass
-class DownloadParams:
-    """Inputs the worker needs to start a download."""
+class DownloadParams(DownloadConfig):
+    """GUI download configuration with explicit automatic-output semantics."""
 
-    url: str
-    parent_dir: str
-    size: int
-    first: int
-    last: int | None
-    n_workers: int = DEFAULT_N_THREADS
+    output_base_dir: str | None = None
+    automatic_output: bool = False
 
 
 class DownloaderFactory(Protocol):
-    """Callable that builds a Downloader. Tests inject a fake here."""
-
-    def __call__(self, url: str, first: int, last: int | None) -> Downloader: ...
+    def __call__(self, url: str, first: int, last: int | None, descriptive_names: bool = False) -> Downloader: ...
 
 
-def _default_factory(url: str, first: int, last: int | None) -> Downloader:
-    return Downloader(url, first, last)
+def _default_factory(url: str, first: int, last: int | None, descriptive_names: bool = False) -> Downloader:
+    return Downloader(url, first, last, descriptive_names=descriptive_names)
 
 
 class DownloadWorker:
-    """Run a download on a background thread, surface events on a Queue."""
-
     def __init__(self, factory: DownloaderFactory = _default_factory) -> None:
         self._factory = factory
         self.events: queue.Queue[WorkerEvent] = queue.Queue()
+        self._policy_responses: queue.Queue[ExistingPolicy] = queue.Queue()
         self._cancel = threading.Event()
         self._thread: threading.Thread | None = None
 
     def start(self, params: DownloadParams) -> None:
-        """Spawn the download thread. Returns immediately."""
+        params.validate()
         if self._thread is not None and self._thread.is_alive():
             raise RuntimeError('A download is already in progress')
         self._cancel.clear()
+        self._clear_policy_responses()
         self._thread = threading.Thread(target=self._run, args=(params,), name='antenati-download', daemon=True)
         self._thread.start()
 
+    def resolve_existing_policy(self, policy: ExistingPolicy) -> None:
+        if policy is ExistingPolicy.ASK:
+            raise ValueError('ExistingPolicy.ASK cannot resolve an existing-output prompt')
+        self._policy_responses.put(policy)
+
     def cancel(self) -> None:
-        """Ask the running download to stop at the next canvas boundary."""
         self._cancel.set()
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
     def join(self, timeout: float | None = None) -> None:
-        """Wait for the worker to finish (mainly useful in tests)."""
         if self._thread is not None:
             self._thread.join(timeout)
 
+    def _clear_policy_responses(self) -> None:
+        try:
+            while True:
+                self._policy_responses.get_nowait()
+        except queue.Empty:
+            pass
+
+    def _cancelled_report(self, downloader: Downloader) -> DownloadReport:
+        return DownloadReport(
+            expected=downloader.gallery_length,
+            attempted=0,
+            completed=0,
+            skipped=0,
+            failed=(),
+            cancelled=True,
+            bytes_written=0,
+        )
+
+    def _resolve_policy(
+        self,
+        downloader: Downloader,
+        output: Path,
+        policy: ExistingPolicy,
+    ) -> ExistingPolicy | None:
+        if policy is not ExistingPolicy.ASK:
+            return policy
+        if not existing_output_requires_decision(downloader, output):
+            return ExistingPolicy.ERROR
+
+        self.events.put(ExistingOutput(path=str(output)))
+        while not self._cancel.is_set():
+            try:
+                return self._policy_responses.get(timeout=0.1)
+            except queue.Empty:
+                continue
+        return None
+
     def _run(self, params: DownloadParams) -> None:
         try:
-            downloader = self._factory(params.url, params.first, params.last)
-            downloader.check_dir(params.parent_dir, interactive=False)
+            params.validate()
+            self.events.put(Phase(_('Loading register metadata…')))
+            downloader = self._factory(params.url, params.first, params.last, params.descriptive_names)
+            downloader.load()
+
+            if params.automatic_output:
+                base_directory = Path(params.output_base_dir or Path.cwd()).expanduser().resolve()
+                directory = (base_directory / downloader.dirname.name).resolve()
+            else:
+                directory = output_directory(downloader, params.output_dir).expanduser().resolve()
+            self.events.put(Destination(path=str(directory)))
+
+            policy = self._resolve_policy(downloader, directory, params.existing_policy)
+            if policy is None:
+                self.events.put(Cancelled(report=self._cancelled_report(downloader)))
+                return
+
+            self.events.put(Phase(_('Preparing output…')))
+            prepare_output(downloader, directory, policy)
+
+            completed = 0
+
+            def tick() -> None:
+                nonlocal completed
+                completed += 1
+                self.events.put(Tick(completed=completed))
 
             progress = ProgressBar(
                 set_total=lambda total: self.events.put(Progress(total=total)),
-                update=lambda: self.events.put(Tick()),
+                update=tick,
             )
-            total_bytes = downloader.run(params.n_workers, params.size, progress, cancel=self._cancel)
+            self.events.put(Phase(_('Planning download…')))
+            report = run_with_policy(
+                downloader,
+                n_workers=params.n_workers,
+                size=params.size,
+                progress=progress,
+                policy=policy,
+                cancel=self._cancel,
+            )
         except Exception as ex:
             logger.exception('Download worker failed')
             self.events.put(Failed(message=str(ex)))
             return
 
-        if self._cancel.is_set():
-            self.events.put(Cancelled())
+        if report.cancelled:
+            self.events.put(Cancelled(report=report))
         else:
-            self.events.put(Done(total_bytes=total_bytes))
+            self.events.put(Done(report=report))
+
+
+@dataclass(frozen=True)
+class RegisterPreview:
+    url: str
+    metadata: tuple[tuple[str, str], ...]
+    pages: int
+    dirname: str
+
+
+@dataclass(frozen=True)
+class PreviewFailed:
+    url: str
+    message: str
+
+
+PreviewEvent = RegisterPreview | PreviewFailed
+
+
+class PreviewLoader:
+    """Load register metadata in the background so the GUI can show it before downloading.
+
+    Each request runs on its own daemon thread; results for a URL that is no
+    longer the latest request are dropped so a slow reply never overwrites a
+    newer one.
+    """
+
+    def __init__(self, factory: DownloaderFactory = _default_factory) -> None:
+        self._factory = factory
+        self.events: queue.Queue[PreviewEvent] = queue.Queue()
+        self._lock = threading.Lock()
+        self._latest: str | None = None
+
+    @property
+    def latest(self) -> str | None:
+        with self._lock:
+            return self._latest
+
+    def request(self, url: str) -> None:
+        with self._lock:
+            self._latest = url
+        threading.Thread(target=self._run, args=(url,), name='antenati-preview', daemon=True).start()
+
+    def clear(self) -> None:
+        with self._lock:
+            self._latest = None
+
+    def _run(self, url: str) -> None:
+        try:
+            downloader = self._factory(url, 0, None).load()
+            event: PreviewEvent = RegisterPreview(
+                url=url,
+                metadata=tuple(metadata_rows(downloader.manifest)),
+                pages=downloader.gallery_length,
+                dirname=downloader.dirname.name,
+            )
+        except Exception as ex:
+            logger.info('Register preview failed for %s: %s', url, ex)
+            event = PreviewFailed(url=url, message=str(ex))
+        with self._lock:
+            if url != self._latest:
+                return
+        self.events.put(event)

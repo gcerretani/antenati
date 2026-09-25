@@ -1,162 +1,320 @@
-"""Unit tests for :mod:`antenati.gui.worker`.
-
-These tests stay completely Tk-free: they exercise the worker thread by
-injecting fake :class:`Downloader` objects and asserting the sequence of
-events that lands on the worker's queue. The real GUI just polls that
-queue, so getting these events right is enough to guarantee the UI
-behaves correctly.
-"""
+"""Tk-free unit tests for the GUI worker state machine."""
 
 from __future__ import annotations
 
 import queue
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from antenati.downloader import ProgressBar
+from antenati.downloader import DownloadReport, ProgressBar
 from antenati.gui.worker import (
     Cancelled,
+    Destination,
     Done,
     DownloadParams,
     DownloadWorker,
+    ExistingOutput,
     Failed,
+    Phase,
+    PreviewFailed,
+    PreviewLoader,
     Progress,
+    RegisterPreview,
     Tick,
 )
+from antenati.output import ExistingPolicy
 
 
 class _FakeDownloader:
-    """Minimal Downloader stand-in: pumps a fixed number of ticks and ends."""
-
     def __init__(
         self,
         n_canvases: int = 3,
         total_bytes: int = 42,
         raise_in_run: Exception | None = None,
-        cancel_after: int | None = None,
+        block_for_cancel: bool = False,
+        dirname: Path | None = None,
     ) -> None:
-        self.gallery_length = n_canvases
-        self.dirname = Path('ignored')
+        self.dirname = dirname or Path('ignored')
         self._n_canvases = n_canvases
         self._total_bytes = total_bytes
         self._raise = raise_in_run
-        self._cancel_after = cancel_after
-        self.check_dir_called_with: tuple[str, bool] | None = None
+        self._block_for_cancel = block_for_cancel
+        self.loaded = False
 
-    def check_dir(self, parent_dir: str, interactive: bool) -> None:
-        self.check_dir_called_with = (parent_dir, interactive)
+    @property
+    def gallery_length(self) -> int:
+        return self._n_canvases
 
-    def run(self, n_workers: int, size: int, progress: ProgressBar, cancel=None) -> int:
+    def load(self):
+        self.loaded = True
+        return self
+
+    def run(self, n_workers: int, size: int, progress: ProgressBar, cancel=None, *, resume: bool = False) -> DownloadReport:
+        del n_workers, size, resume
         if self._raise is not None:
             raise self._raise
         progress.set_total(self._n_canvases)
-        if self._cancel_after is not None and cancel is not None:
-            for _ in range(self._cancel_after):
-                progress.update()
-            # Block until the test calls worker.cancel(); mirrors the
-            # real Downloader's "stop at next canvas boundary" behaviour.
+        if self._block_for_cancel and cancel is not None:
             cancel.wait(timeout=2.0)
-            return self._total_bytes // 2
+            return DownloadReport(self._n_canvases, 0, 0, 0, (), True, 0)
         for _ in range(self._n_canvases):
             progress.update()
-        return self._total_bytes
+        return DownloadReport(self._n_canvases, self._n_canvases, self._n_canvases, 0, (), False, self._total_bytes)
 
 
 def _drain_events(worker: DownloadWorker, timeout: float = 2.0) -> list[Any]:
-    """Collect all events the worker pushes until the thread finishes."""
     worker.join(timeout=timeout)
     events: list[Any] = []
     try:
         while True:
             events.append(worker.events.get_nowait())
     except queue.Empty:
-        pass
-    return events
+        return events
 
 
-def _params() -> DownloadParams:
+def _params(
+    tmp_path: Path,
+    *,
+    output_dir: str | None = None,
+    output_base_dir: str | None = None,
+    automatic_output: bool = False,
+    policy: ExistingPolicy = ExistingPolicy.OVERWRITE,
+) -> DownloadParams:
     return DownloadParams(
         url='https://example.org/gallery',
-        parent_dir='/tmp/x',
+        output_dir=output_dir if output_dir is not None else str(tmp_path / 'out'),
+        output_base_dir=output_base_dir,
+        automatic_output=automatic_output,
         size=0,
         first=0,
         last=None,
+        existing_policy=policy,
     )
 
 
-def test_happy_path_emits_progress_ticks_and_done() -> None:
+def test_happy_path_emits_destination_phases_progress_ticks_and_done(tmp_path: Path) -> None:
+    output = tmp_path / 'out'
     fake = _FakeDownloader(n_canvases=3, total_bytes=12345)
-    worker = DownloadWorker(factory=lambda url, first, last: fake)
-    worker.start(_params())
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    worker.start(_params(tmp_path))
     events = _drain_events(worker)
 
-    assert isinstance(events[0], Progress)
-    assert events[0].total == 3
-    assert sum(1 for e in events if isinstance(e, Tick)) == 3
+    destinations = [event for event in events if isinstance(event, Destination)]
+    assert [event.path for event in destinations] == [str(output)]
+
+    phases = [event for event in events if isinstance(event, Phase)]
+    assert [phase.message for phase in phases] == ['Loading register metadata…', 'Preparing output…', 'Planning download…']
+
+    progress_events = [event for event in events if isinstance(event, Progress)]
+    assert len(progress_events) == 1
+    assert progress_events[0].total == 3
+
+    ticks = [event for event in events if isinstance(event, Tick)]
+    assert [tick.completed for tick in ticks] == [1, 2, 3]
+
     assert isinstance(events[-1], Done)
-    assert events[-1].total_bytes == 12345
+    assert events[-1].report.bytes_written == 12345
+    assert fake.loaded
 
 
-def test_check_dir_is_called_with_parent_and_non_interactive() -> None:
-    fake = _FakeDownloader(n_canvases=1)
-    worker = DownloadWorker(factory=lambda url, first, last: fake)
-    worker.start(_params())
-    _drain_events(worker)
-    assert fake.check_dir_called_with == ('/tmp/x', False)
+def test_automatic_output_uses_fixed_base_and_generated_register_name(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    base.mkdir()
+    generated_name = 'generated-register'
+    fake = _FakeDownloader(dirname=Path(generated_name))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+    )
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    expected = (base / generated_name).resolve()
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert Path(destination.path).is_absolute()
+    assert destination.path == str(expected)
+    assert expected.is_dir()
+    assert isinstance(events[-1], Done)
 
 
-def test_constructor_failure_emits_failed_event() -> None:
-    def boom(url: str, first: int, last: int | None):
+def test_ask_policy_on_generated_existing_output_waits_for_gui_choice(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    generated = base / 'generated-register'
+    generated.mkdir(parents=True)
+    (generated / 'existing.txt').write_text('existing', encoding='utf-8')
+    fake = _FakeDownloader(dirname=Path('generated-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+        policy=ExistingPolicy.ASK,
+    )
+
+    worker.start(params)
+    seen: list[Any] = []
+    while True:
+        event = worker.events.get(timeout=2.0)
+        seen.append(event)
+        if isinstance(event, ExistingOutput):
+            break
+
+    assert event.path == str(generated.resolve())
+    assert worker.is_running()
+
+    worker.resolve_existing_policy(ExistingPolicy.RESUME)
+    remaining = _drain_events(worker)
+
+    assert any(isinstance(item, Destination) for item in seen)
+    assert isinstance(remaining[-1], Done)
+
+
+def test_constructor_failure_emits_phase_then_failed_event(tmp_path: Path) -> None:
+    def boom(url: str, first: int, last: int | None, descriptive_names: bool = False):
+        del url, first, last, descriptive_names
         raise RuntimeError('manifest blew up')
 
     worker = DownloadWorker(factory=boom)
-    worker.start(_params())
+    worker.start(_params(tmp_path))
     events = _drain_events(worker)
-    assert len(events) == 1
-    assert isinstance(events[0], Failed)
-    assert 'manifest blew up' in events[0].message
+    assert isinstance(events[0], Phase)
+    assert isinstance(events[-1], Failed)
+    assert 'manifest blew up' in events[-1].message
 
 
-def test_run_failure_emits_failed_event() -> None:
+def test_run_failure_emits_failed_event(tmp_path: Path) -> None:
     fake = _FakeDownloader(raise_in_run=RuntimeError('disk full'))
-    worker = DownloadWorker(factory=lambda url, first, last: fake)
-    worker.start(_params())
-    events = _drain_events(worker)
-    failures = [e for e in events if isinstance(e, Failed)]
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    worker.start(_params(tmp_path))
+    failures = [event for event in _drain_events(worker) if isinstance(event, Failed)]
     assert len(failures) == 1
     assert 'disk full' in failures[0].message
 
 
-def test_cancel_before_completion_emits_cancelled_event() -> None:
-    # Have the fake check the cancel event and return early.
-    fake = _FakeDownloader(n_canvases=10, cancel_after=2)
-    worker = DownloadWorker(factory=lambda url, first, last: fake)
-    worker.start(_params())
+def test_cancel_before_completion_emits_cancelled_event(tmp_path: Path) -> None:
+    fake = _FakeDownloader(n_canvases=10, block_for_cancel=True)
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    worker.start(_params(tmp_path))
     worker.cancel()
     events = _drain_events(worker)
-    assert any(isinstance(e, Cancelled) for e in events)
-    assert not any(isinstance(e, Done) for e in events)
+    assert any(isinstance(event, Cancelled) for event in events)
+    assert not any(isinstance(event, Done) for event in events)
 
 
-def test_starting_twice_while_running_raises() -> None:
-    # cancel_after=0 + factory returns a fake that blocks on cancel.wait()
-    # gives us a worker that's guaranteed to be alive when start() is
-    # called a second time.
-    fake = _FakeDownloader(n_canvases=1, cancel_after=0)
-    worker = DownloadWorker(factory=lambda url, first, last: fake)
-    worker.start(_params())
+def test_starting_twice_while_running_raises(tmp_path: Path) -> None:
+    fake = _FakeDownloader(block_for_cancel=True)
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    worker.start(_params(tmp_path))
     with pytest.raises(RuntimeError, match='already in progress'):
-        worker.start(_params())
+        worker.start(_params(tmp_path))
     worker.cancel()
     _drain_events(worker)
 
 
-def test_is_running_flips_around_the_thread_lifetime() -> None:
+def test_is_running_flips_around_thread_lifetime(tmp_path: Path) -> None:
     fake = _FakeDownloader(n_canvases=1)
-    worker = DownloadWorker(factory=lambda url, first, last: fake)
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
     assert worker.is_running() is False
-    worker.start(_params())
+    worker.start(_params(tmp_path))
     worker.join(timeout=2.0)
     assert worker.is_running() is False
+
+
+def test_relative_custom_output_is_reported_as_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeDownloader(dirname=Path('generated-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    monkeypatch.chdir(tmp_path)
+    params = _params(tmp_path, output_dir='custom-output')
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert destination.path == str((tmp_path / 'custom-output').resolve())
+    assert Path(destination.path).is_absolute()
+
+
+def test_automatic_output_never_uses_previous_register_as_base(tmp_path: Path) -> None:
+    base = tmp_path / 'downloads'
+    previous = base / 'previous-register'
+    previous.mkdir(parents=True)
+    fake = _FakeDownloader(dirname=Path('next-register'))
+    worker = DownloadWorker(factory=lambda url, first, last, descriptive_names=False: fake)
+    params = _params(
+        tmp_path,
+        output_dir=None,
+        output_base_dir=str(base),
+        automatic_output=True,
+    )
+
+    worker.start(params)
+    events = _drain_events(worker)
+
+    destination = next(event for event in events if isinstance(event, Destination))
+    assert destination.path == str((base / 'next-register').resolve())
+    assert destination.path != str((previous / 'next-register').resolve())
+
+
+class _PreviewFake:
+    def __init__(self, dirname: str = 'register-dir') -> None:
+        self.dirname = Path(dirname)
+        self.manifest = {'metadata': [{'label': 'Tipologia', 'value': '<b>Nati</b>'}]}
+        self.gallery_length = 15
+
+    def load(self):
+        return self
+
+
+def _next_preview_event(loader: PreviewLoader, timeout: float = 2.0) -> Any:
+    return loader.events.get(timeout=timeout)
+
+
+def test_preview_loader_reports_metadata_pages_and_dirname() -> None:
+    loader = PreviewLoader(factory=lambda url, first, last, descriptive_names=False: _PreviewFake())
+    loader.request('https://example.org/gallery')
+
+    event = _next_preview_event(loader)
+
+    assert event == RegisterPreview(
+        url='https://example.org/gallery',
+        metadata=(('Tipologia', 'Nati'),),
+        pages=15,
+        dirname='register-dir',
+    )
+
+
+def test_preview_loader_reports_failures_as_events() -> None:
+    def factory(url, first, last, descriptive_names=False):
+        raise ValueError('not a Portale Antenati URL')
+
+    loader = PreviewLoader(factory=factory)
+    loader.request('https://example.org/nope')
+
+    assert _next_preview_event(loader) == PreviewFailed(url='https://example.org/nope', message='not a Portale Antenati URL')
+
+
+def test_preview_loader_drops_results_for_superseded_urls() -> None:
+    release_slow = threading.Event()
+
+    def factory(url, first, last, descriptive_names=False):
+        if url.endswith('slow'):
+            release_slow.wait(timeout=2.0)
+            return _PreviewFake('slow-dir')
+        return _PreviewFake('fast-dir')
+
+    loader = PreviewLoader(factory=factory)
+    loader.request('https://example.org/slow')
+    loader.request('https://example.org/fast')
+
+    assert _next_preview_event(loader).dirname == 'fast-dir'
+    release_slow.set()
+    with pytest.raises(queue.Empty):
+        loader.events.get(timeout=0.3)

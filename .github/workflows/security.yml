@@ -1,0 +1,45 @@
+name: Security
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  schedule:
+    # Weekly canary so newly disclosed CVEs are caught even without a code change.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit:
+    name: pip-audit
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      with:
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      with:
+        python-version: '3.12'
+
+    - name: Install pip-audit
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements/audit.txt
+
+    - name: Audit runtime dependencies
+      run: pip-audit --strict .
+
+    - name: Audit release tooling
+      run: pip-audit --strict -r requirements/release.txt

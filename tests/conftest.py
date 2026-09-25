@@ -9,12 +9,18 @@ orchestration of :class:`antenati.Downloader` entirely offline.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 import responses as responses_module
 
+# Interface strings are localised from the OS locale; pin English before any
+# antenati module is imported so help texts and messages match the assertions.
+os.environ['ANTENATI_LANG'] = 'en'
+
 import antenati
+from antenati import i18n
 
 FIXTURES_DIR = Path(__file__).parent / 'fixtures'
 
@@ -25,10 +31,18 @@ ARCHIVE_ID = '19944535'
 
 # The HTML fixture embeds this exact manifest URL inside a ``manifestId``
 # JavaScript assignment.
-MANIFEST_URL = 'https://iiif.example.org/ark/12657/iiif-19944535/manifest'
+MANIFEST_URL = 'https://dam-antenati.cultura.gov.it/antenati/containers/test/manifest'
 
 # Tests don't decode the downloaded payload; any byte sequence is fine.
 TINY_JPEG = b'\xff\xd8\xff\xd9'  # SOI + EOI (smallest "valid" JPEG)
+
+
+@pytest.fixture(autouse=True)
+def _english_interface(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv('ANTENATI_LANG', 'en')
+    i18n.set_language('en')
+    yield
+    i18n.set_language('en')
 
 
 @pytest.fixture

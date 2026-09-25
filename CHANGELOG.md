@@ -5,11 +5,66 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0] - 2026-09-25
+
+### Added
+- Verified resume support that reuses existing files only when provenance, requested resolution, byte size and SHA-256 still match (#59)
+- Structured `DownloadReport` shared by CLI and GUI, with expected, attempted, completed, skipped, failed and cancelled state (#60)
+- Persistent `.antenati-manifest.json` and `.antenati-index.json` provenance with per-image canvas/source mapping, requested size, byte size, SHA-256 and timestamp (#61)
+- Explicit output selection and `ask`, `error`, `overwrite`, `skip` and `resume` existing-output policies in CLI and GUI; `ask` is the shared interactive default and recommends verified resume (#62)
+- CLI `--dry-run` preview of the exact planned pages, filenames and image URLs without image writes (#63)
+- Shared CLI/GUI configuration model, including worker-count and descriptive-filename controls in the GUI (#64)
+- Resource ceilings for metadata, image size, canvas count, total bytes and bounded in-flight work (#50)
+- Explicit Antenati HTTPS trust chain: public portal input validation plus public-network validation for discovered manifest/image backends and every redirect, without hardcoding current internal CDN hostnames (#48)
+- Optional `strict=True` programmatic download mode that raises `DownloadFailedError` while retaining the structured report on the exception (#75)
+- Modern Typer/Rich command-line interface with a TTY-only guided wizard, cleaned metadata cards, loading status, structured progress/report panels and focused debug diagnostics (#79)
+- Versioned machine-readable `--format json` output for both downloads and dry-run plans, with stdout kept free of Rich/progress rendering (#79)
+- GUI and CLI interface localised in English, Italian, French and Spanish, following the system language, with an `ANTENATI_LANG` override; option names, policy keywords, JSON output and core error messages stay in English
+- Explicit **Maximum size** checkbox in the GUI instead of the implicit `0` size value
+- GUI register preview: leaving the URL field (or pressing Enter) loads the register metadata in the background and shows the same card as the CLI (title, type, dates, archive, clickable links, page count) in a fixed-size side panel that never resizes the window, fills in the register folder name before downloading, and reports invalid URLs inline
+- Ko-fi support link with a ♥ in the GUI (button and File menu), in the CLI wizard banner and in `--help`; the CLI falls back to ASCII (`<3`, `OK`, `--`) for ♥/✓/■ on consoles whose encoding cannot represent them (e.g. cp1252), instead of crashing
+- `antenati-gui --version` / `python -m antenati.gui --version` print the version and exit without opening a window, enabling headless smoke tests of the packaged executable (#57)
+
+### Changed
+- **Breaking:** `Downloader.run()` no longer raises automatically for partial page failures; it returns `DownloadReport` and callers must inspect `report.successful`/`report.failed`, or opt in to `strict=True` for exception-based handling (#60, #75)
+- Split downloader construction, source loading, planning and execution into explicit phases; constructing a `Downloader` no longer performs network I/O (#67)
+- Numeric page labels are zero-padded from the complete gallery size so lexicographic filename order matches page order and remains stable across subsets (#73)
+- Image bodies are streamed instead of buffered in memory, and queued work is bounded relative to worker count (#50)
+- CLI, GUI and programmatic execution now share preflight validation for page ranges, image size and worker count (#52)
+- CLI parsing/presentation migrated from argparse, direct Click, `tqdm` and `humanize` to Typer + Rich; `--workers`/`-n` is the worker option while the legacy `--nthreads` alias remains as a deprecated alias for v6 script compatibility; following GNU convention `-v`/`--verbose` now controls logging verbosity (repeat for DEBUG logging and full tracebacks, replacing the separate `--debug` flag) and `-V`/`--version` prints the version; `-h` is also accepted as a `--help` alias (#79)
+- README now documents standalone GitHub Release executables as the recommended path for non-Python users, alongside PyPI and source/development installation, and describes the actual single-gallery/register scope and integrity guarantees (#68)
+- GUI progress now distinguishes manifest/planning phases with an indeterminate animation before switching to determinate per-page progress (#79)
+- The GUI destination model now separates a fixed absolute base directory from the metadata-derived register folder: automatic per-register subfolders never replace the base path, preventing confusing apparent nesting between consecutive downloads; direct-to-folder mode and Open folder remain available (#79)
+- GUI status text and register-folder display are width-stable: long destination paths no longer resize the application window between downloads (#79)
+- Package description, About box and CLI help now read "Download image galleries from the Portale Antenati"; the copyright year is aligned to 2018 everywhere
+- Runtime dependency constraints (`rich`, `python-slugify`, `requests`) now allow currently supported patch/minor releases instead of pinning to a single already-superseded line (#58)
+
+### Security
+- Third-party GitHub Actions are pinned to immutable commit SHAs (with the corresponding release tag as a comment) instead of mutable version tags (#58)
+- Dependabot keeps GitHub Actions and Python dependencies (runtime, dev and release tooling) up to date with weekly, grouped pull requests (#58)
+- CI runs `pip-audit` against runtime and release-tooling dependencies on every push/PR and on a weekly schedule (#58)
+- Release builds pin their build/packaging tooling (`build`, `pyinstaller`, `cyclonedx-bom`) to exact versions and attach a CycloneDX SBOM alongside each PyInstaller executable in GitHub releases (#58)
+- Pull requests to `master` require the offline lint/test CI job to pass before merging (#55)
+- Release publication now runs the full offline test suite and dependency audit before building, builds the sdist/wheel and the three PyInstaller executables from that single verified commit, and only proceeds to PyPI/GitHub Release publication if everything succeeded; the GitHub release is created as a draft and made public only after PyPI publication succeeds, and a final check fails loudly if the two ever end up out of sync (#56)
+- Linux/macOS PyInstaller executables are zipped (preserving the executable permission bit) before upload instead of after download, and each archive is extracted and its `--version` output verified in CI before being published, so the distributed binaries are known to run rather than merely known to exist (#57)
+
+### Fixed
+- Reject unsupported media types, HTML/text responses, corrupt image data and MIME/signature mismatches before a final image file is committed (#47)
+- Missing or invalid response metadata and malformed selections now fail with controlled domain errors instead of late technical exceptions (#52)
+- Existing files are never silently treated as valid by resume/skip semantics without matching provenance and integrity checks (#59, #62)
+- Restored interactive handling of non-empty output directories through the explicit `ask` policy instead of failing by default (#62)
+- Verified resume/skip now reconciles an already-verified file to the filename produced by the current naming mode, without silently overwriting an unrelated target (#76)
+- Portal metadata rendered by the CLI no longer exposes raw HTML anchor tags.
+- Atomic file promotion retries transient Windows access-denied/sharing locks before reporting a real write failure.
+
+### Testing
+- Expanded offline regression coverage for cancellation side effects, filename collisions and padding, atomic/integrity guarantees, report/file consistency, provenance, verified resume, output policies, resource limits and shared configuration (#66)
+- Added offline CLI/GUI acceptance coverage for the TTY wizard, JSON-only stdout, dry-run plans, concise/debug error modes, Windows atomic-replace retries, GUI loading phases, destination handling and width-stable status rendering across Linux, macOS and Windows (#79)
 
 ## [6.2] - 2026-09-06
 
 ### Fixed
-- Prevent silent overwrites when multiple canvases normalize to the same default filename; later collisions now receive deterministic suffixes
+- Prevent silent overwrites when multiple canvases normalize to same default filename; later collisions now receive deterministic suffixes
 - Add bounded HTTP connect/read timeouts and ensure a cancellation already requested before `run()` performs no image requests
 - Write downloads through temporary files and atomically replace the destination only after a complete write, preserving existing good files on write failures and avoiding symlink-following writes
 - Fix a Tk GUI race where the terminal `Done`/`Failed`/`Cancelled` event could remain unprocessed after the worker exited
@@ -59,7 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Graceful handling of server denials (403 or WAF challenge)
-
 
 ## [4.0] - 2025-07-27
 

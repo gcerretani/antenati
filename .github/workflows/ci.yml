@@ -5,6 +5,7 @@ on:
     branches: ['**']
   pull_request:
     branches: ['**']
+  workflow_call:
 
 permissions:
   contents: read
@@ -19,15 +20,16 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
+        persist-credentials: false
         # hatch-vcs derives the version from git tags; needed even for
         # editable installs so `import antenati; antenati.__version__`
         # doesn't fall back to `0.0.0+local` during type-checking.
         fetch-depth: 0
 
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       with:
         python-version: '3.12'
 
@@ -56,12 +58,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
+        persist-credentials: false
         fetch-depth: 0
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -78,3 +81,19 @@ jobs:
 
     - name: Smoke `python -m antenati --version`
       run: python -m antenati --version
+
+  # This is the required status check configured on the `master` branch
+  # ruleset. Do not rename this job without updating the ruleset
+  # (repos/gcerretani/antenati/rulesets/6842887) to match.
+  ci-passed:
+    name: CI passed
+    needs: [lint, test]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Check all required jobs succeeded
+      run: |
+        if [ "${{ needs.lint.result }}" != "success" ] || [ "${{ needs.test.result }}" != "success" ]; then
+          echo "One or more required jobs did not succeed."
+          exit 1
+        fi

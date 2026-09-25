@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2018 Giovanni Cerretani
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""antenati: a tool to download data from the Portale Antenati."""
+"""antenati: download image galleries from the Portale Antenati."""
 
 from __future__ import annotations
 
@@ -8,36 +8,45 @@ import warnings
 from importlib.metadata import PackageNotFoundError, version
 
 __author__ = 'Giovanni Cerretani'
-__copyright__ = 'Copyright (c) 2022, Giovanni Cerretani'
+__copyright__ = 'Copyright (c) 2018, Giovanni Cerretani'
 __license__ = 'GPL-3.0-or-later'
 __contact__ = 'https://gcerretani.github.io/antenati/'
+__support__ = 'https://ko-fi.com/gcerretani'
 
 try:
     __version__ = version(__name__)
 except PackageNotFoundError:
-    # The package is being executed from a source checkout that hasn't
-    # been `pip install`-ed; report a sentinel so tests can still
-    # assert the attribute exists without pretending to know the tag.
     __version__ = '0.0.0+local'
 
 from antenati.downloader import (
     DEFAULT_N_THREADS,
     DEFAULT_SIZE,
     Downloader,
+    DownloadItem,
+    DownloadPlan,
+    DownloadReport,
+    PageFailure,
     ProgressBar,
 )
-from antenati.errors import ThreadError
+from antenati.errors import DownloadFailedError, ThreadError, UrlTrustError
 
 __all__ = [
     'DEFAULT_N_THREADS',
     'DEFAULT_SIZE',
+    'DownloadFailedError',
+    'DownloadItem',
+    'DownloadPlan',
+    'DownloadReport',
     'Downloader',
+    'PageFailure',
     'ProgressBar',
     'ThreadError',
+    'UrlTrustError',
     '__author__',
     '__contact__',
     '__copyright__',
     '__license__',
+    '__support__',
     '__version__',
 ]
 

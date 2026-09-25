@@ -1,4 +1,4 @@
-"""Regression tests for correctness and hardening fixes introduced in v6.2."""
+"""Regression tests for correctness and hardening invariants."""
 
 from __future__ import annotations
 
@@ -13,8 +13,9 @@ def _null_progress() -> ProgressBar:
 
 
 def test_duplicate_canvas_labels_receive_unique_stems(downloader: Downloader) -> None:
-    downloader.canvases[1]['label'] = downloader.canvases[0]['label']
-    stems = downloader._Downloader__build_unique_stems()
+    canvases = list(downloader.canvases)
+    canvases[1]['label'] = canvases[0]['label']
+    stems = downloader._build_unique_stems(canvases)
     assert len(stems) == len(set(stems))
     assert stems[0] == '0001'
     assert stems[1] == '0001-2'
@@ -26,7 +27,10 @@ def test_preset_cancel_performs_no_additional_http_requests(mocked_http, downloa
     cancel = threading.Event()
     cancel.set()
 
-    assert downloader.run(n_workers=2, size=0, progress=_null_progress(), cancel=cancel) == 0
+    report = downloader.run(n_workers=2, size=0, progress=_null_progress(), cancel=cancel)
+    assert report.cancelled
+    assert report.attempted == 0
+    assert report.bytes_written == 0
     assert len(mocked_http.calls) == requests_before_run
     assert list(downloader.dirname.iterdir()) == []
 

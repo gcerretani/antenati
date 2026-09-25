@@ -9,11 +9,19 @@ doesn't fail.
 
 from __future__ import annotations
 
+import sys
+
 __all__ = ['main']
 
 
 def main() -> None:
     """Launch the Tkinter GUI. Imported lazily to keep Tk optional."""
     from antenati.gui.app import main as _app_main
+
+    if '--version' in sys.argv[1:]:
+        from antenati import __version__
+
+        print(__version__)
+        return
 
     _app_main()

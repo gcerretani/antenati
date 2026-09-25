@@ -1,0 +1,4 @@
+# Pinned tooling used to scan for known-vulnerable dependencies in CI.
+# Install with:
+#   pip install -r requirements/audit.txt
+pip-audit==2.10.1
