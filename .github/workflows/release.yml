@@ -77,7 +77,7 @@ jobs:
       run: pyinstaller --windowed --onefile --name antenati_gui src/antenati/gui/__main__.py
 
     - name: Generate SBOM
-      run: cyclonedx-py environment -o antenati_gui.cdx.json
+      run: cyclonedx-py environment -o ${{ matrix.sbom_name }}
 
     - name: Package the executable (preserves Unix permission bits in the zip)
       run: python -c "import zipfile; zf = zipfile.ZipFile('${{ matrix.zip_name }}', 'w', zipfile.ZIP_DEFLATED); zf.write('dist/${{ matrix.exe }}', arcname='${{ matrix.exe }}'); zf.close()"
@@ -131,7 +131,7 @@ jobs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ matrix.sbom_name }}
-        path: antenati_gui.cdx.json
+        path: ${{ matrix.sbom_name }}
 
   build-distribution:
     name: Build sdist + wheel
