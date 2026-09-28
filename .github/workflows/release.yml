@@ -74,7 +74,11 @@ jobs:
         pip install -r requirements/release.txt
 
     - name: Build standalone GUI binary
-      run: pyinstaller --windowed --onefile --name antenati_gui src/antenati/gui/__main__.py
+      # python-slugify resolves its transliteration backend at runtime via
+      # importlib.import_module(), which PyInstaller's static analysis can't
+      # see, so the text-unidecode fallback it depends on must be listed
+      # explicitly (see #90).
+      run: pyinstaller --windowed --onefile --name antenati_gui --hidden-import text_unidecode src/antenati/gui/__main__.py
 
     - name: Generate SBOM
       run: cyclonedx-py environment -o ${{ matrix.sbom_name }}
