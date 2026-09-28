@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1] - 2026-09-28
+
+### Added
+- PyPI trove classifiers for genealogy/history topics and general utilities, to improve discoverability
+
+### Fixed
+- Standalone GUI executables no longer crash with `No module named 'text_unidecode'` while generating filenames: `python-slugify` resolves its transliteration backend at runtime via `importlib.import_module()`, which is invisible to PyInstaller's static import analysis, so the fallback module is now bundled explicitly (#90)
+
+### Security
+- Updated pinned GitHub Actions (`actions/checkout`, `actions/setup-python`) and dev/build tooling (`mypy`, `pytest`, `responses`, `ruff`) to their latest supported releases (#83, #89)
+
 ## [7.0] - 2026-09-25
 
 ### Added

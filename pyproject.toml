@@ -32,6 +32,9 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Multimedia :: Graphics",
+    "Topic :: Sociology :: Genealogy",
+    "Topic :: Sociology :: History",
+    "Topic :: Utilities",
 ]
 dependencies = [
     "rich>=14,<16",
